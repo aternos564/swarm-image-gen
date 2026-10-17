@@ -54,6 +54,59 @@ const DEFAULT_LLM_INSTRUCTION = [
     'Only output the tags themselves, on one line, separated by commas. Use at most 60 tags.',
 ].join(' ');
 
+/**
+ * "Send me a picture of:" sources — the same entries the built-in Image Generation
+ * extension offers in its wand-menu submenu. They travel through `generateImage({ source })`
+ * and `/swarm <key>` accepts them as well.
+ */
+const PICTURE_SOURCES = {
+    you: 'Yourself',
+    face: 'Your Face',
+    me: 'Me',
+    scene: 'The Whole Story',
+    last: 'The Last Message',
+    raw_last: 'Raw Last Message',
+    background: 'Background',
+};
+
+/**
+ * Instructions for the sources that the chat model has to describe. These are the built-in
+ * extension's own prompt templates, so each entry produces the same kind of prompt as
+ * SillyTavern's "Generate Image" menu. "Raw Last Message" is not here: it uses the message
+ * text itself and never calls the model.
+ */
+const SOURCE_INSTRUCTIONS = {
+    you: 'In the next response I want you to provide only a detailed comma-delimited list of keywords and phrases which describe {{char}}. The list must include all of the following items in this order: name, species and race, gender, age, clothing, occupation, physical features and appearances. Do not include descriptions of non-visual qualities such as personality, movements, scents, mental traits, or anything which could not be seen in a still photograph. Do not write in full sentences. Prefix your description with the phrase \'full body portrait,\'',
+    face: 'In the next response I want you to provide only a detailed comma-delimited list of keywords and phrases which describe {{char}}. The list must include all of the following items in this order: name, species and race, gender, age, facial features and expressions, occupation, hair and hair accessories (if any), what they are wearing on their upper body (if anything). Do not describe anything below their neck. Do not include descriptions of non-visual qualities such as personality, movements, scents, mental traits, or anything which could not be seen in a still photograph. Do not write in full sentences. Prefix your description with the phrase \'close up facial portrait,\'',
+    me: 'Ignore previous instructions and provide a detailed description of {{user}}\'s physical appearance from the perspective of {{char}} in the form of a comma-delimited list of keywords and phrases. The list must include all of the following items in this order: name, species and race, gender, age, clothing, occupation, physical features and appearances. Do not include descriptions of non-visual qualities such as personality, movements, scents, mental traits, or anything which could not be seen in a still photograph. Do not write in full sentences. Prefix your description with the phrase \'full body portrait,\'. Ignore the rest of the story when crafting this description. Do not reply as {{char}} when writing this description, and do not attempt to continue the story.',
+    scene: 'Ignore previous instructions and provide a detailed description for all of the following: a brief recap of recent events in the story, {{char}}\'s appearance, and {{char}}\'s surroundings. Do not reply as {{char}} while writing this description.',
+    last: [
+        'Ignore previous instructions. Your next response must be formatted as a single comma-delimited list of concise keywords. The list will describe the visual details included in the last chat message.',
+        '',
+        'Only mention characters by using pronouns (\'he\',\'his\',\'she\',\'her\',\'it\',\'its\') or neutral nouns (\'male\', \'the man\', \'female\', \'the woman\').',
+        '',
+        'Ignore non-visible things such as feelings, personality traits, thoughts, and spoken dialog.',
+        '',
+        'Add keywords in this precise order:',
+        'a keyword to describe the location of the scene,',
+        'a keyword to mention how many characters of each gender or type are present in the scene (minimum of two characters: {{user}} and {{char}}, example: \'2 men \' or \'1 man 1 woman \', \'1 man 3 robots\'),',
+        'keywords to describe the relative physical positioning of the characters to each other (if a commonly known term for the positioning is known use it instead of describing the positioning in detail) + \'POV\',',
+        'a single keyword or phrase to describe the primary act taking place in the last chat message,',
+        'keywords to describe {{char}}\'s physical appearance and facial expression,',
+        'keywords to describe {{char}}\'s actions,',
+        'keywords to describe {{user}}\'s physical appearance and actions.',
+        '',
+        'If character actions involve direct physical interaction with another character, mention specifically which body parts interacting and how.',
+        '',
+        'A correctly formatted example response would be:',
+        '\'(location),(character list by gender),(primary action), (relative character position) POV, (character 1\'s description and actions), (character 2\'s description and actions)\'',
+    ].join('\n'),
+    background: 'Ignore previous instructions and provide a detailed description of {{char}}\'s surroundings in the form of a comma-delimited list of keywords and phrases. The list must include all of the following items in this order: location, time of day, weather, lighting, and any other relevant details. Do not include descriptions of characters and non-visual qualities such as names, personality, movements, scents, mental traits, or anything which could not be seen in a still photograph. Do not write in full sentences. Prefix your description with the phrase \'background,\'. Ignore the rest of the story when crafting this description. Do not reply as {{char}} when writing this description, and do not attempt to continue the story.',
+};
+
+/** Sources that must not get the character's look tags - "Me" and "Background" are not the character. */
+const SOURCES_WITHOUT_LOOK_TAGS = new Set(['me', 'background']);
+
 const defaultSettings = {
     base_url: DEFAULT_BASE_URL,
     transport: 'auto',
@@ -778,10 +831,34 @@ function buildLoraTags(settings = getSettings()) {
     return (settings.loras ?? []).map((lora) => `<lora:${loraTagName(lora)}:${lora.weight}>`).join(', ');
 }
 
-/** True when the prompt already contains a `<lora:...>` tag for this LoRA. */
-function hasLoraTag(prompt, lora) {
-    const name = loraTagName(lora).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`<lora:[^>]*${name}[^>]*>`, 'i').test(String(prompt ?? ''));
+/**
+ * Removes `<lora:...>` tags for LoRAs that are active in the panel from a hand edited
+ * chat prompt. The chips stay authoritative: buildPrompt() appends their own tags and
+ * weights, so a tag typed by hand would otherwise apply the same LoRA twice.
+ * @param {string} scene
+ * @returns {string}
+ */
+function removeActiveLoraTags(scene) {
+    const active = getSettings().loras ?? [];
+    if (!active.length || !/<lora:/i.test(String(scene ?? ''))) {
+        return String(scene ?? '');
+    }
+
+    const removed = [];
+    const out = String(scene).replace(/<lora:[^>]*>/gi, (tag) => {
+        const lora = active.find((entry) => tag.toLowerCase().includes(loraTagName(entry).toLowerCase()));
+        if (!lora) {
+            return tag;
+        }
+        removed.push(loraTagName(lora));
+        return '';
+    });
+
+    if (removed.length === 0) {
+        return String(scene);
+    }
+    log('Removed hand-written LoRA tag(s) from the chat prompt, the active LoRAs are used instead:', removed.join(', '));
+    return fixImagePrompt(out);
 }
 
 /**
@@ -1003,14 +1080,69 @@ function buildNegativePrompt() {
     return fixImagePrompt(substituteSafe(settings.negative_prompt));
 }
 
+/** @returns {any|null} The most recent usable chat message (the built-in extension's "last message"). */
+function lastUsableMessage() {
+    const context = ctx();
+    return (context.chat ?? []).slice().reverse().find((m) => m && !m.is_system && typeof m.mes === 'string' && m.mes.trim()) ?? null;
+}
+
+/** @returns {any|null} The character card that belongs to the last usable message. */
+function characterOfLastMessage() {
+    const context = ctx();
+    const message = lastUsableMessage();
+    if (!message) {
+        return null;
+    }
+    if (context.groupId) {
+        return (context.characters ?? []).find((c) => c?.avatar === message.original_avatar) ?? null;
+    }
+    return context.characters?.[context.characterId] ?? null;
+}
+
 /** @returns {string} The most recent usable chat message turned into tags. */
 function lastMessagePrompt() {
-    const context = ctx();
-    const message = (context.chat ?? []).slice().reverse().find((m) => m && !m.is_system && typeof m.mes === 'string' && m.mes.trim());
+    const message = lastUsableMessage();
+    return message ? stripFormatting(message.mes) : '';
+}
+
+/**
+ * "Raw Last Message": the last message exactly as written, followed by the character's
+ * scenario and description with weights - the same composite the built-in extension sends.
+ * @returns {string}
+ */
+function rawLastMessagePrompt() {
+    const message = lastUsableMessage();
     if (!message) {
         return '';
     }
-    return stripFormatting(message.mes);
+    const character = characterOfLastMessage();
+    const scenario = stripFormatting(character?.scenario ?? character?.data?.scenario ?? '');
+    const description = stripFormatting(character?.description ?? character?.data?.description ?? '');
+    const parts = [`((${stripFormatting(message.mes)}))`];
+    if (scenario) {
+        parts.push(`(${scenario}:0.7)`);
+    }
+    if (description) {
+        parts.push(`(${description}:0.5)`);
+    }
+    return parts.join(', ');
+}
+
+/**
+ * Builds the scene part of the prompt for a "Send me a picture of:" source.
+ * @param {string} source Key of PICTURE_SOURCES, or '' for the plain generation flow
+ * @param {boolean} [forceLlm] Write the scene with the chat model even if the panel says otherwise
+ * @returns {Promise<string>}
+ */
+async function sourceScenePrompt(source, forceLlm = false) {
+    const settings = getSettings();
+    if (source === 'raw_last') {
+        return rawLastMessagePrompt();
+    }
+    if (source && SOURCE_INSTRUCTIONS[source]) {
+        return await writeScenePrompt(substituteSafe(SOURCE_INSTRUCTIONS[source]));
+    }
+    return (forceLlm || settings.llm_prompt) ? await writeScenePrompt() : lastMessagePrompt();
 }
 
 /** @returns {{avatar: string|null}} Character that authored the last usable message. */
@@ -1026,18 +1158,22 @@ function lastMessageCharacter() {
     return { avatar: null };
 }
 
-/** Asks the chat LLM to describe the current scene as image tags. */
-async function writeScenePrompt() {
+/**
+ * Asks the chat LLM to turn the recent chat into image tags.
+ * @param {string} [instruction] Overrides the instruction configured in the panel
+ * @returns {Promise<string>}
+ */
+async function writeScenePrompt(instruction = '') {
     const settings = getSettings();
-    const instruction = String(settings.llm_instruction || DEFAULT_LLM_INSTRUCTION);
-    log('Asking the chat model for a scene prompt…');
+    const quietPrompt = String(instruction || settings.llm_instruction || DEFAULT_LLM_INSTRUCTION);
+    log('Asking the chat model for a prompt…');
     const result = await ctx().generateQuietPrompt({
-        quietPrompt: instruction,
+        quietPrompt,
         quietToLoud: false,
         removeReasoning: true,
     });
     const cleaned = stripFormatting(result);
-    log('LLM scene prompt:', cleaned);
+    log('LLM prompt:', cleaned);
     return cleaned;
 }
 
@@ -1046,84 +1182,57 @@ async function writeScenePrompt() {
  * ------------------------------------------------------------------ */
 
 /**
- * "Edit prompts before generation": shows the fully assembled positive/negative prompt in a
- * popup so it can be corrected, or the generation cancelled, before anything reaches SwarmUI.
- * @param {{prompt: string, negativeprompt: string}} params Generation parameters, edited in place
- * @returns {Promise<void>} Throws an error with `.cancelled` set when the user cancels
+ * "Edit prompts before generation": shows the chat prompt - the text taken from the chat
+ * (or typed by hand), without the look tags, prefix tags, suffix tags, LoRA tags and the
+ * negative prompt - so it can be corrected, or the generation cancelled, before anything
+ * reaches SwarmUI. Everything else is added afterwards, exactly as configured in the panel.
+ * @param {string} sceneText The chat prompt to review
+ * @returns {Promise<string>} The edited chat prompt
+ * @throws {Error} An error with `.cancelled` set when the user cancels
  */
-async function reviewPromptBeforeSending(params) {
+async function reviewSceneBeforeSending(sceneText) {
     const popupShow = ctx().Popup?.show;
-    if (typeof popupShow?.input !== 'function') {
-        warn('This SillyTavern version has no popup API; sending the prompt as it is.');
-        return;
-    }
-
-    const activeLoras = getSettings().loras ?? [];
-    const loraHint = activeLoras.length
-        ? `<br><small>Active LoRAs are re-added automatically if your edit removes them: ${activeLoras.map((lora) => loraTagName(lora)).join(', ')}</small>`
-        : '';
-
-    const edited = await popupShow.input(
-        'Review and edit the prompt',
-        `Press "Cancel" to abort the image generation.${loraHint}`,
-        String(params.prompt ?? '').trim(),
-        {
-            rows: 8,
-            okButton: 'Continue',
-            cancelButton: 'Cancel',
-            customInputs: [{
-                id: 'swarm_refine_negative',
-                label: 'Negative prompt (optional)',
-                type: 'textarea',
-                rows: 4,
-                defaultState: String(params.negativeprompt ?? ''),
-            }],
-            onClose: (popup) => {
-                if (!popup?.result || !(popup.inputResults instanceof Map)) {
-                    return;
-                }
-                const negative = popup.inputResults.get('swarm_refine_negative');
-                if (negative !== undefined) {
-                    params.negativeprompt = String(negative).trim();
-                }
-            },
-        },
-    );
-
     const cancelled = (message) => {
         const error = new Error(message);
         error.cancelled = true;
         return error;
     };
 
+    if (typeof popupShow?.input !== 'function') {
+        warn('This SillyTavern version has no popup API; sending the prompt as it is.');
+        return String(sceneText ?? '');
+    }
+
+    const edited = await popupShow.input(
+        'Review and edit the prompt:',
+        'Press "Cancel" to abort the image generation.<br><small>Only the chat prompt is shown here — your look tags, prefix/suffix tags, LoRA tags and the negative prompt are added automatically.</small>',
+        String(sceneText ?? '').trim(),
+        {
+            rows: 8,
+            okButton: 'Continue',
+            cancelButton: 'Cancel',
+        },
+    );
+
     if (edited === null || edited === undefined) {
         throw cancelled('Image generation cancelled.');
     }
 
-    params.prompt = String(edited).trim();
-    if (!params.prompt) {
+    const scene = String(edited).trim();
+    if (!scene) {
         throw cancelled('The prompt is empty; generation cancelled.');
     }
 
-    // The active LoRAs in the panel stay authoritative: if the edit dropped one of
-    // their tags, append it again so the chips are always what SwarmUI receives.
-    const dropped = activeLoras.filter((lora) => !hasLoraTag(params.prompt, lora));
-    if (dropped.length > 0) {
-        const names = dropped.map((lora) => loraTagName(lora)).join(', ');
-        params.prompt = `${params.prompt}, ${dropped.map((lora) => `<lora:${loraTagName(lora)}:${lora.weight}>`).join(', ')}`;
-        toastrSafe('info', `Re-added LoRA tag(s) removed by the edit: ${names}.`);
-        log('Re-added LoRA tags after the prompt edit:', names);
-    }
-
-    log('Prompt reviewed before generation:', { prompt: params.prompt, negative: params.negativeprompt });
+    log('Chat prompt reviewed before generation:', scene);
+    return scene;
 }
 
 /**
  * Runs a full generation and posts the result to chat.
- * @param {{sceneText?: string, forceLlm?: boolean, quiet?: boolean, overrides?: object, targetAvatar?: string|null}} options
+ * @param {{sceneText?: string, forceLlm?: boolean, quiet?: boolean, overrides?: object, targetAvatar?: string|null, source?: string}} options
  * @returns {Promise<string>} The saved image path (empty on failure).
  */
-async function generateImage({ sceneText = '', forceLlm = false, quiet = false, overrides = {}, targetAvatar = null } = {}) {
+async function generateImage({ sceneText = '', forceLlm = false, quiet = false, overrides = {}, targetAvatar = null, source = '' } = {}) {
     if (busy) {
         toastrSafe('warning', 'An image is already being generated.');
         return '';
@@ -1141,23 +1250,31 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
             throw new Error('No checkpoint model selected. Press Connect and pick a model.');
         }
 
-        // 1. Scene prompt
+        // 1. The chat prompt: either the text we were given (message button, /swarm <text>,
+        //    function tool) or what the chosen "Send me a picture of:" source produces.
         let scene = stripFormatting(sceneText);
         if (!scene) {
-            scene = (forceLlm || settings.llm_prompt) ? await writeScenePrompt() : lastMessagePrompt();
+            scene = await sourceScenePrompt(source, forceLlm);
         }
         if (!scene) {
             throw new Error('No prompt text available. Send a chat message, or use /swarm <prompt>.');
         }
 
-        // 2. Look tags for the right character
+        // 2. Look tags for the right character ("Me" and "Background" are not the character)
+        const skipLookTags = SOURCES_WITHOUT_LOOK_TAGS.has(source);
         const avatar = targetAvatar ?? lastMessageCharacter().avatar;
-        const lookTags = settings.use_look_tags && avatar ? readLookTags(avatar) : '';
-        if (sceneText && settings.use_look_tags && !avatar) {
+        const lookTags = settings.use_look_tags && !skipLookTags && avatar ? readLookTags(avatar) : '';
+        if (sceneText && settings.use_look_tags && !skipLookTags && !avatar) {
             log('No character resolved for look tags; generating without them.');
         }
 
-        // 3. Parameters
+        // 3. Optional: show only the chat prompt and let it be corrected before sending.
+        if (settings.edit_before_generation) {
+            scene = removeActiveLoraTags(await reviewSceneBeforeSending(scene));
+        }
+
+        // 4. Parameters. Prefix, suffix, look and LoRA tags are added here - after the
+        //    review - so the popup only ever shows the chat prompt itself.
         const params = {
             prompt: buildPrompt({ scene, lookTags, settings }),
             negativeprompt: buildNegativePrompt(),
@@ -1179,11 +1296,6 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
             params.vae = String(vae);
         }
 
-        // 3b. Optional: let the user review and change the prompt before anything is sent.
-        if (settings.edit_before_generation) {
-            await reviewPromptBeforeSending(params);
-        }
-
         log('Request:', {
             model: params.model,
             sampler: params.sampler,
@@ -1198,7 +1310,7 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
             negative: params.negativeprompt,
         });
 
-        // 4. Generate
+        // 5. Generate
         const started = performance.now();
         const result = await apiCall('/API/GenerateText2Image', params, {
             timeout: GENERATION_TIMEOUT_MS,
@@ -1211,7 +1323,7 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
         }
         log(`Generated ${imagePath} in ${seconds}s.`);
 
-        // 5. Download and store inside SillyTavern's user images folder
+        // 6. Download and store inside SillyTavern's user images folder
         const { base64, format } = await downloadImage(imagePath);
         const chatIdBefore = ctx().getCurrentChatId();
 
@@ -1222,6 +1334,10 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
         const filename = `swarm_${folder || 'chat'}_${context.humanizedDateTime()}`;
         const savedPath = await saveBase64AsFile(base64, folder, filename, format);
         log(`Saved to ${savedPath}`);
+
+        if (source === 'background') {
+            await applyChatBackground(savedPath);
+        }
 
         if (!quiet) {
             if (ctx().getCurrentChatId() !== chatIdBefore) {
@@ -1248,6 +1364,27 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
     } finally {
         busy = false;
         updateBusyUi(false);
+    }
+}
+
+/**
+ * The built-in extension treats "Background" as "make this the chat's background image",
+ * so the picture generated with that source is applied here too.
+ * @param {string} imagePath Path of the saved image inside SillyTavern's user images
+ * @returns {Promise<void>}
+ */
+async function applyChatBackground(imagePath) {
+    const context = ctx();
+    const source = context.eventSource;
+    const event = context.eventTypes?.FORCE_SET_BACKGROUND;
+    if (!source?.emit || !event) {
+        return;
+    }
+    try {
+        await source.emit(event, { url: `url("${encodeURI(imagePath)}")`, path: imagePath });
+        log('Set the generated image as the chat background.');
+    } catch (error) {
+        warn('Could not set the chat background.', error);
     }
 }
 
@@ -1353,7 +1490,94 @@ const MESSAGE_BUTTON_HTML = `<div title="Generate an image for this message (Swa
 const WAND_MENU_ITEM_HTML = `<div id="swarm_menu_gen" class="list-group-item flex-container flexGap5">
     <div class="fa-solid fa-wand-magic-sparkles extensionsMenuExtensionButton" title="Generate an image from the current chat with SwarmUI" data-i18n="[title]Generate an image from the current chat with SwarmUI"></div>
     <span data-i18n="Generate Image (SwarmUI)">Generate Image (SwarmUI)</span>
+    <div id="swarm_source_toggle" class="extensionsMenuExtensionButton fa-solid fa-caret-right swarm-source-toggle" title="Choose what the picture should show (Yourself, Your Face, Me, the last message, ...)" data-i18n="[title]Choose what the picture should show (Yourself, Your Face, Me, the last message, ...)"></div>
 </div>`;
+
+/**
+ * The "Send me a picture of:" list, with the same entries as the built-in Image Generation
+ * extension. Like the built-in one it is appended to <body> so the wand menu's own scroll
+ * container can never clip it.
+ */
+const SOURCE_MENU_HTML = `<ul id="swarm_source_menu" class="list-group">
+    <span data-i18n="Send me a picture of:">Send me a picture of:</span>
+    ${Object.entries(PICTURE_SOURCES).map(([key, label]) => `<li class="list-group-item" id="swarm_source_${key}" data-value="${key}" data-i18n="${label}">${label}</li>`).join('\n    ')}
+</ul>`;
+
+/** Guards against adding the source list twice (SillyTavern activates once per page load). */
+let sourceMenuInstalled = false;
+
+/**
+ * Shows or hides the "Send me a picture of:" list above the caret. The built-in extension
+ * anchors its version with Popper; a fixed position keeps this extension free of extra
+ * dependencies and behaves the same on phones.
+ * @param {boolean} [force] `true` shows, `false` hides, omitted toggles
+ * @returns {void}
+ */
+function toggleSourceMenu(force) {
+    const $menu = $('#swarm_source_menu');
+    if (!$menu.length) {
+        return;
+    }
+
+    const open = typeof force === 'boolean' ? force : $menu.css('display') !== 'block';
+    if (!open) {
+        $menu.css('display', 'none');
+        return;
+    }
+
+    $menu.css({ display: 'block', left: '0px', top: '0px' });
+
+    const element = $('#swarm_source_toggle').get(0);
+    const rect = element?.getBoundingClientRect?.();
+    const viewport = globalThis.window;
+    if (!rect || !viewport) {
+        return;
+    }
+
+    const menuHeight = $menu.get(0)?.offsetHeight || 280;
+    const menuWidth = $menu.get(0)?.offsetWidth || 260;
+    const above = rect.top - menuHeight > 8;
+    const top = above ? rect.top - menuHeight : rect.bottom + 8;
+    const left = Math.max(8, Math.min(rect.left, viewport.innerWidth - menuWidth - 8));
+    $menu.css({
+        left: `${Math.round(left)}px`,
+        top: `${Math.round(Math.max(8, Math.min(top, viewport.innerHeight - menuHeight - 8)))}px`,
+    });
+}
+
+/** Adds the "Send me a picture of:" list and wires it to the caret next to the menu entry. */
+function installSourceMenu() {
+    if (sourceMenuInstalled) {
+        return;
+    }
+    sourceMenuInstalled = true;
+
+    $('body').append(SOURCE_MENU_HTML);
+
+    // The caret sits inside the wand menu entry, so the row's own click handler (which
+    // generates an image) must not also fire when the list is opened.
+    $(document).on('click', '#swarm_source_toggle', (event) => {
+        event?.stopPropagation?.();
+        toggleSourceMenu();
+    });
+
+    for (const [key, label] of Object.entries(PICTURE_SOURCES)) {
+        $(`#swarm_source_${key}`).on('click', () => {
+            toggleSourceMenu(false);
+            log(`Picture source: ${label} (${key})`);
+            return generateImage({ source: key });
+        });
+    }
+
+    // Any click outside the caret and the list closes it again.
+    $(document).on('click', (event) => {
+        const target = $(event?.target);
+        if (target.closest('#swarm_source_menu, #swarm_source_toggle').length) {
+            return;
+        }
+        toggleSourceMenu(false);
+    });
+}
 
 /** Adds the per-message button to the message template and to rendered messages. */
 function injectMessageButtons() {
@@ -1400,6 +1624,17 @@ async function onMessageButtonClick(event) {
  * Slash command
  * ------------------------------------------------------------------ */
 
+/**
+ * Turns "/swarm you", "/swarm face", ... into the matching picture source, the same
+ * shortcuts the built-in "/sd" command accepts.
+ * @param {string} text The command's value
+ * @returns {string} A key of PICTURE_SOURCES, or '' when the text is a normal prompt
+ */
+function pictureSourceOf(text) {
+    const key = String(text ?? '').trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(PICTURE_SOURCES, key) ? key : '';
+}
+
 function registerSlashCommand() {
     const context = ctx();
     const { SlashCommandParser, SlashCommand, SlashCommandNamedArgument, SlashCommandArgument, ARGUMENT_TYPE } = context;
@@ -1412,7 +1647,10 @@ function registerSlashCommand() {
         name: 'swarm',
         returns: 'URL of the generated image, or an empty string if the generation failed',
         callback: async (args, value) => {
-            const prompt = String(value ?? '').trim();
+            const text = String(value ?? '').trim();
+            // "/swarm you", "/swarm face", ... use the same shortcuts as the source menu.
+            const source = pictureSourceOf(text);
+            const prompt = source ? '' : text;
             const overrides = {};
             for (const key of ['model', 'sampler', 'scheduler', 'vae', 'width', 'height', 'steps', 'cfg', 'seed', 'images']) {
                 if (args?.[key] !== undefined && args[key] !== '' && args[key] !== null) {
@@ -1421,7 +1659,8 @@ function registerSlashCommand() {
             }
             return await generateImage({
                 sceneText: prompt,
-                forceLlm: !prompt,
+                source,
+                forceLlm: !prompt && !source,
                 quiet: asBoolean(args?.quiet),
                 overrides,
             });
@@ -1516,7 +1755,10 @@ function registerSlashCommand() {
             <div>
                 <code>/swarm a cat on a throne</code> uses the given text as the scene prompt.<br>
                 <code>/swarm</code> with no text asks the chat model to write the scene prompt from the recent chat
-                (or uses the last message if "Let the chat LLM write the scene prompt" is disabled).
+                (or uses the last message if "Let the chat LLM write the scene prompt" is disabled).<br>
+                <code>/swarm you</code> (or <code>face</code>, <code>me</code>, <code>scene</code>, <code>last</code>,
+                <code>raw_last</code>, <code>background</code>) uses the same "Send me a picture of:" sources as
+                SillyTavern's built-in image menu.
             </div>
             <div>
                 Active SwarmUI LoRAs, prefix/suffix tags and the current character's look tags are always applied.
@@ -1897,6 +2139,7 @@ export async function onActivate() {
                 installWandMenuEntry();
                 applyBuiltinImageUiVisibility();
             }],
+            ['picture sources', async () => installSourceMenu()],
             ['message buttons', async () => injectMessageButtons()],
             ['settings events', async () => bindSettingsEvents()],
             ['chat events', async () => bindChatEvents()],

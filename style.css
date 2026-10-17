@@ -138,6 +138,35 @@ body.swarm-hide-builtin-image .sd_settings {
     color: var(--swarm-accent, #4db8ff);
 }
 
+/* Caret on the right of the wand-menu entry: opens the "Send me a picture of:" list. */
+#swarm_menu_gen .swarm-source-toggle {
+    margin-left: auto;
+    padding-left: 6px;
+    cursor: pointer;
+}
+
+/* The "Send me a picture of:" list, mirroring the built-in image extension's submenu.
+   Positioned from the caret when it opens (see toggleSourceMenu), so it never gets clipped
+   by the wand menu's own scroll container. */
+#swarm_source_menu {
+    display: none;
+    position: fixed;
+    z-index: 30000;
+    width: max-content;
+    max-width: min(88vw, 320px);
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+#swarm_source_menu .list-group-item {
+    cursor: pointer;
+    background-color: var(--bg1, #1f1f27);
+}
+
+#swarm_source_menu .list-group-item:hover {
+    background-color: var(--white30a, rgba(255, 255, 255, 0.15));
+}
+
 /* Message button in the chat */
 .mes_button.swarm_mes_gen {
     /* Accent colour so it is never mixed up with SillyTavern's built-in image buttons. */

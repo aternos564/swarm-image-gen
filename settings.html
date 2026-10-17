@@ -157,6 +157,10 @@
 
                 <label class="swarm-label" for="swarm_llm_instruction" data-i18n="Instruction for the LLM">Instruction for the LLM</label>
                 <textarea id="swarm_llm_instruction" class="text_pole autoSetHeight" rows="5"></textarea>
+
+                <div class="swarm-hint">
+                    <span data-i18n="The caret next to &quot;Generate Image (SwarmUI)&quot; in the wand menu opens the same &quot;Send me a picture of:&quot; list as SillyTavern's built-in image extension: Yourself, Your Face, Me, The Whole Story, The Last Message, Raw Last Message and Background. The same shortcuts work as /swarm you, /swarm face, /swarm me, /swarm scene, /swarm last, /swarm raw_last and /swarm background.">The caret next to "Generate Image (SwarmUI)" in the wand menu opens the same "Send me a picture of:" list as SillyTavern's built-in image extension: Yourself, Your Face, Me, The Whole Story, The Last Message, Raw Last Message and Background. The same shortcuts work as /swarm you, /swarm face, /swarm me, /swarm scene, /swarm last, /swarm raw_last and /swarm background.</span>
+                </div>
             </div>
 
             <!-- ========================= Generation modes ======================= -->
@@ -164,10 +168,14 @@
                 <div class="swarm-section-title" data-i18n="Generation modes">Generation modes</div>
 
                 <label for="swarm_edit_before_generation" class="checkbox_label"
-                       title="Allow to edit the positive and negative prompt manually before they are sent to SwarmUI.">
+                       title="Show the chat prompt in a popup before generating, so it can be corrected or the generation cancelled. Your look tags, prefix/suffix tags, LoRA tags and negative prompt are added after the popup.">
                     <input type="checkbox" id="swarm_edit_before_generation" />
                     <span data-i18n="Edit prompts before generation">Edit prompts before generation</span>
                 </label>
+
+                <div class="swarm-hint">
+                    <span data-i18n="The popup shows only the chat prompt (the part taken from the chat, or the prompt you typed after /swarm). The look tags, prefix/suffix tags, LoRA tags and the negative prompt are added automatically when you press Continue.">The popup shows only the chat prompt (the part taken from the chat, or the prompt you typed after /swarm). The look tags, prefix/suffix tags, LoRA tags and the negative prompt are added automatically when you press Continue.</span>
+                </div>
 
                 <label for="swarm_interactive_mode" class="checkbox_label"
                        title="Automatically generate an image when you send a message like 'send me a picture of a cat'.">

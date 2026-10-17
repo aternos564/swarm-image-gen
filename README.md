@@ -5,20 +5,22 @@ into the SillyTavern chat. Built as a replacement for the built-in "Image Genera
 extension, with the two things that one lacks:
 
 * **full LoRA support** — LoRAs are sent as native `<lora:name:weight>` tags (SwarmUI parses them itself), and
-  you can stack as many as you want with individual weights. Active LoRAs stay authoritative: if you rewrite the
-  prompt in the *Edit prompts before generation* popup, their tags are appended again, and SwarmUI's own warnings
-  (a LoRA name it does not know) are shown as a toast instead of being swallowed.
+  you can stack as many as you want with individual weights. Active LoRAs stay authoritative: the chips are
+  always appended to the prompt, whatever the prompt itself says, and SwarmUI's own warnings (a LoRA name it
+  does not know) are shown as a toast instead of being swallowed.
 * **per-character look tags** — a fixed list of appearance/face/hair/outfit tags per character, always
   prepended to every prompt, so the character keeps her face and clothes between images,
 * **one obvious image button** — an entry in SillyTavern's own wand menu (the one with *Attach a File*), plus a
   wand button under every message. SillyTavern's built-in image button keeps working next to them; a checkbox in
   the panel hides it if you would rather see only SwarmUI's button.
 
-It also supports letting the chat model write the image prompt from the current scene, an optional popup to
-review and edit every prompt before it is sent (*Edit prompts before generation*), interactive mode
-(auto-generate when you ask for a picture in chat), a function tool so tool-capable models can request images
-themselves, keeps a busy-lock so two generations can never overlap, and saves every picture into SillyTavern's
-own user images folder.
+It also supports the same **"Send me a picture of:"** list as SillyTavern's built-in image extension
+(Yourself, Your Face, Me, The Whole Story, The Last Message, Raw Last Message, Background — also available as
+`/swarm you`, `/swarm face`, …), letting the chat model write the image prompt from the current scene, an
+optional popup to review and edit the chat prompt before it is sent (*Edit prompts before generation*),
+interactive mode (auto-generate when you ask for a picture in chat), a function tool so tool-capable models can
+request images themselves, keeps a busy-lock so two generations can never overlap, and saves every picture into
+SillyTavern's own user images folder.
 
 ---
 
@@ -87,22 +89,27 @@ Option A works exactly the same from the phone's browser. Two things to remember
    (`data.extensions.swarm_look_tags`) and always prepended to prompts for that character.
    In group chats the tags of the character who wrote the message are used automatically.
 8. *(optional)* Tick **Let the chat LLM write the scene prompt** and edit the instruction to taste.
+9. *(optional)* Use the **caret** on the right of *Generate Image (SwarmUI)* in the wand menu (or `/swarm you`,
+   `/swarm face`, …) to generate a picture of something specific instead of the current scene. Clicking the entry
+   itself keeps generating from the current chat.
 
 ## Usage
 
 | Trigger | What it does |
 | --- | --- |
 | **Generate Image (SwarmUI)** in the wand menu next to the chat box | Generates from the current chat: the last message, or an LLM-written scene when that option is on. |
+| Caret `›` on the right of that entry | Opens the built-in *"Send me a picture of:"* list: **Yourself** (portrait of the character), **Your Face** (close-up portrait), **Me** (your persona), **The Whole Story** (recap, appearance and surroundings), **The Last Message** (the chat model turns the last message into tags), **Raw Last Message** (the message as written, plus the character's scenario and description with weights), **Background** (surroundings, and the picture is also set as the chat background). "Me" and "Background" never get the character's look tags. |
 | Blue wand button in a message's extra buttons | Generates an image for that message. With the LLM option on, the model rewrites the scene into image tags; otherwise the message text is used. |
 | `/swarm a girl on a throne` | Uses the given text as the scene prompt. |
 | `/swarm` (no text) | Always asks the chat model to write the scene prompt. |
+| `/swarm you` (or `face`, `me`, `scene`, `last`, `raw_last`, `background`) | The same sources as the caret list above. |
 | **Generate now** button in the panel | Same as `/swarm` with no text. |
 | `send me a picture of a cat` in chat (*Use interactive mode* on) | Generates automatically, using the detected subject as the scene. |
 | Chat model calling the `GenerateImageSwarmUI` function tool (*Use function tool* on) | Tool-capable models request the image themselves during the scene. |
-| *Edit prompts before generation* on | Every trigger above first opens a popup with the finished prompt (and negative prompt), both editable. Active LoRA tags are put back automatically if your edit removes them. |
+| *Edit prompts before generation* on | Every trigger above first opens a popup with **only the chat prompt** — no look tags, no prefix/suffix tags, no LoRA tags, no negative prompt — so it can be corrected or the generation cancelled. Everything else is added to the prompt afterwards, exactly as configured in the panel. |
 
 Optional arguments: `/swarm quiet=true width=832 height=1216 steps=30 cfg=5 seed=1234 model=... sampler=... scheduler=... vae=... images=1`
-(`quiet=true` generates without posting to chat).
+(`quiet=true` generates without posting to chat). The value can also be one of the source shortcuts above.
 
 Images are saved to `data/<user>/user/images/<character>/swarm_<character>_<date>.png` and posted as a
 **system message**, which SillyTavern never sends to the language model — so your context stays clean.
@@ -165,7 +172,8 @@ This must be enabled again after a config reset, and it is off by default.
 | *"Invalid value for parameter VAE"* | You are sending a VAE name SwarmUI does not have. Set VAE back to *Automatic*, or pick a real VAE file from the dropdown. |
 | The character's face keeps changing | Uncheck nothing — instead check the **look tags** are filled in for *that* character, and that the prompt is not dominated by scene tags. Also the seed: `-1` gives a new face every time. Fix a seed to compare. |
 | Image is posted but shows as a broken picture | The file was saved but the chat message points elsewhere. Reload and check `data/<user>/user/images/`. |
-| Nothing happens when I click the wand button | Open the browser console (F12) and look for `[swarm]` lines. If the button is missing entirely, the extension did not load — reload the page. If you clicked the *paintbrush* button, that was SillyTavern's built-in image extension, not this one. |
+| Nothing happens when I click the wand button | Open the browser console (F12) and look for `[swarm]` lines. If the button is missing entirely, the extension did not load — reload the page. If you clicked the *paintbrush* button, that was SillyTavern's built-in image extension, not this one. Clicking the very right edge of the entry (the `›` caret) opens the source list instead of generating. |
+| The *Edit prompts before generation* popup is empty | No chat prompt could be built (empty chat or empty message). Type what you want into the box — the look, prefix/suffix and LoRA tags and the negative prompt are added to whatever is in there when you press Continue. |
 | Two generations at once | Not possible by design; the second one is refused with a toast. |
 
 Console logging: everything is prefixed with `[swarm]`, including the exact request that was sent
