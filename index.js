@@ -1303,14 +1303,21 @@ function lastMessageCharacter() {
 }
 
 /**
- * Asks the chat LLM to turn the recent chat into image tags.
+ * Asks the chat LLM to turn the recent chat into image tags. When a previous prompt exists it is
+ * quoted back with a request for a different take: without it, a model that is asked twice about
+ * the same chat often repeats its own last answer word for word, which makes "New prompt" look
+ * like it did nothing.
  * @param {string} [instruction] Overrides the instruction configured in the panel
  * @returns {Promise<string>}
  */
 async function writeScenePrompt(instruction = '') {
     const settings = getSettings();
-    const quietPrompt = String(instruction || settings.llm_instruction || DEFAULT_LLM_INSTRUCTION);
-    log('Asking the chat model for a prompt…');
+    let quietPrompt = String(instruction || settings.llm_instruction || DEFAULT_LLM_INSTRUCTION);
+    const previous = String(settings.last_prompt ?? '').trim();
+    if (previous) {
+        quietPrompt += `\n\nThe previous image was already made with this prompt: "${previous.slice(0, 700)}". Write a new prompt for the current chat: keep the characters and their outfits, change the camera angle, the pose or the framing where it fits, and do not copy the old prompt word for word.`;
+    }
+    log('Asking the chat model for a prompt…', previous ? '(told not to repeat the last one)' : '');
     const result = await ctx().generateQuietPrompt({
         quietPrompt,
         quietToLoud: false,
@@ -1318,6 +1325,10 @@ async function writeScenePrompt(instruction = '') {
     });
     const cleaned = stripFormatting(result);
     log('LLM prompt:', cleaned);
+    if (previous && cleaned && cleaned === previous) {
+        warn('The chat model repeated the previous prompt word for word.');
+        toastrSafe('info', 'The chat model returned the same prompt as the last image.');
+    }
     return cleaned;
 }
 
@@ -1372,12 +1383,31 @@ async function reviewSceneBeforeSending(sceneText) {
 }
 
 /**
+ * True when the scene prompt for this trigger is written by the chat model, i.e. "New prompt"
+ * asks the model again and costs tokens. "Raw Last Message" never does, and without the panel's
+ * LLM option the plain buttons read the last chat message instead.
+ * @param {string} [source] Key of PICTURE_SOURCES, or '' for the plain generation flow
+ * @param {boolean} [forceLlm]
+ * @returns {boolean}
+ */
+function scenePromptUsesLlm(source = '', forceLlm = false) {
+    if (source === 'raw_last') {
+        return false;
+    }
+    if (source && SOURCE_INSTRUCTIONS[source]) {
+        return true;
+    }
+    return !!(forceLlm || getSettings().llm_prompt);
+}
+
+/**
  * Asks what the pressed image button should do: write a new prompt (the chat model may be
  * asked again, which costs tokens) or reuse the chat prompt of the last image. Only called
  * when the setting is on and a previous prompt exists.
+ * @param {boolean} [usesLlm] Whether "New prompt" asks the chat model (see scenePromptUsesLlm)
  * @returns {Promise<'new'|'reuse'|'cancel'>}
  */
-async function askPromptChoice() {
+async function askPromptChoice(usesLlm = false) {
     const popupShow = ctx().Popup?.show;
     if (typeof popupShow?.confirm !== 'function') {
         return 'new';
@@ -1385,19 +1415,24 @@ async function askPromptChoice() {
 
     const lastPrompt = String(getSettings().last_prompt ?? '').trim();
     const preview = lastPrompt.length > 220 ? `${lastPrompt.slice(0, 220)}…` : lastPrompt;
+    const newPromptNote = usesLlm
+        ? 'asks the chat model again and tells it to change the angle, the pose or the framing instead of repeating the old prompt (uses tokens)'
+        : 'just reads the last chat message again - without "Let the chat LLM write the scene prompt" it stays the same until the chat changes';
     const result = await popupShow.confirm(
         'Generate an image',
         [
             '<div>The chat prompt of the last image was:</div>',
             `<div><i>${escapeForPopup(preview)}</i></div>`,
-            '<div><small>Write a new prompt, or reuse that one and only make a new image (no chat model call, no tokens).</small></div>',
+            `<div><small><b>New prompt</b> ${newPromptNote}. <b>Old prompt, new image</b> reuses that prompt and only makes a new picture (no chat model call, no tokens).</small></div>`,
         ].join(''),
         {
             customButtons: [
                 {
                     text: 'New prompt',
                     result: 1,
-                    tooltip: 'Write the prompt again. With "Let the chat LLM write the scene prompt" this asks the chat model and uses tokens.',
+                    tooltip: usesLlm
+                        ? 'Ask the chat model for a new prompt. It is told to change the angle, the pose or the framing instead of repeating the last prompt (uses tokens).'
+                        : 'Read the last chat message again and build the prompt from it. Without "Let the chat LLM write the scene prompt" it changes only when the chat changes.',
                 },
                 {
                     text: 'Old prompt, new image',
@@ -1423,13 +1458,15 @@ async function askPromptChoice() {
  * Entry point for the buttons that generate from the chat (wand menu entry, message button,
  * "Generate now"). Offers "New prompt" or "Old prompt, new image" first when that is switched
  * on and a previous prompt exists, so a new image can be made without asking the chat model.
+ * "New prompt" keeps writing with the chat model when the panel says so; the model is then
+ * told to vary the last prompt instead of repeating it.
  * @param {{sceneText?: string, forceLlm?: boolean, quiet?: boolean, overrides?: object, targetAvatar?: string|null, source?: string}} options
  * @returns {Promise<string>} The saved image path (empty on failure or cancel).
  */
 async function generateFromButton(options = {}) {
     const settings = getSettings();
     if (settings.ask_prompt_choice !== false && String(settings.last_prompt ?? '').trim()) {
-        const choice = await askPromptChoice();
+        const choice = await askPromptChoice(scenePromptUsesLlm(options.source, options.forceLlm));
         if (choice === 'reuse') {
             log('Reusing the last chat prompt:', settings.last_prompt);
             return await generateImage({

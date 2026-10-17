@@ -21,8 +21,10 @@ It also supports the same **"Send me a picture of:"** list as SillyTavern's buil
 (Yourself, Your Face, Me, The Whole Story, The Last Message, Raw Last Message, Background — also available as
 `/swarm you`, `/swarm face`, …), letting the chat model write the image prompt from the current scene, an
 optional popup to review and edit the chat prompt before it is sent (*Edit prompts before generation*),
-**New prompt / Old prompt, new image** (reuse the last chat prompt for a fresh picture without asking the model,
-so no tokens are spent), interactive mode (auto-generate when you ask for a picture in chat), a function tool so
+**New prompt / Old prompt, new image** (when *Let the chat LLM write the scene prompt* is on, **New prompt**
+asks the chat model for a *different* take on the scene — it is told to change the angle, pose or framing
+instead of repeating the last prompt, and you get a toast if it still returns the same text; **Old prompt,
+new image** reuses the last chat prompt for a fresh picture without asking the model, so no tokens are spent), interactive mode (auto-generate when you ask for a picture in chat), a function tool so
 tool-capable models can request images themselves, a busy-lock so two generations can never overlap, and every
 picture is saved into SillyTavern's own user images folder.
 
@@ -124,7 +126,7 @@ Option A works exactly the same from the phone's browser. Two things to remember
 | `send me a picture of a cat` in chat (*Use interactive mode* on) | Generates automatically, using the detected subject as the scene. |
 | Chat model calling the `GenerateImageSwarmUI` function tool (*Use function tool* on) | Tool-capable models request the image themselves during the scene. |
 | *Edit prompts before generation* on | Every trigger above first opens a popup with **only the chat prompt** — no appearance/outfit tags, no prefix/suffix tags, no LoRA tags, no negative prompt — so it can be corrected or the generation cancelled. Everything else is added to the prompt afterwards, exactly as configured in the panel. |
-| *Ask: new prompt or old prompt* on | The wand menu entry, the message button and **Generate now** first ask **New prompt** (the prompt is written again — the chat model is asked when *Let the chat LLM write the scene prompt* is on, which uses tokens) or **Old prompt, new image** (the chat prompt of the last image is reused and a new picture is made without asking the model, so it costs no tokens). The question only appears once a previous prompt exists. |
+| *Ask: new prompt or old prompt* on | The wand menu entry, the message button and **Generate now** first ask **New prompt** or **Old prompt, new image**. **New prompt** writes the prompt again: with *Let the chat LLM write the scene prompt* on the model is asked (uses tokens) and told to change the angle, the pose or the framing instead of repeating the last prompt; without it the last chat message is read again, so the text changes only when the chat does — the popup says which of the two will happen. **Old prompt, new image** reuses the chat prompt of the last image and only makes a new picture without asking the model (no tokens). The question only appears once a previous prompt exists. |
 
 Optional arguments: `/swarm quiet=true width=832 height=1216 steps=30 cfg=5 seed=1234 model=... sampler=... scheduler=... vae=... images=1`
 (`quiet=true` generates without posting to chat). The value can also be one of the source shortcuts above.
@@ -193,6 +195,7 @@ This must be enabled again after a config reset, and it is off by default.
 | Image is posted but shows as a broken picture | The file was saved but the chat message points elsewhere. Reload and check `data/<user>/user/images/`. |
 | Nothing happens when I click the wand button | Open the browser console (F12) and look for `[swarm]` lines. If the button is missing entirely, the extension did not load — reload the page. If you clicked the *paintbrush* button, that was SillyTavern's built-in image extension, not this one. Clicking the very right edge of the entry (the `›` caret) opens the source list instead of generating. |
 | The *Edit prompts before generation* popup is empty | No chat prompt could be built (empty chat or empty message). Type what you want into the box — the appearance, outfit, prefix/suffix and LoRA tags and the negative prompt are added to whatever is in there when you press Continue. |
+| *New prompt* keeps sending the same prompt as the last image | Look at what the popup promised: **without** *Let the chat LLM write the scene prompt*, *New prompt* just reads the last chat message again, so it stays identical until you send a new chat message — switch the LLM option on to have fresh prompts written. **With** the LLM option on, the model is told to change the angle/pose/framing instead of repeating itself; if it returns the same text anyway you get the toast *"The chat model returned the same prompt as the last image."* — the chat has not changed since the last picture, so send a new message, edit the prompt in the *Edit prompts before generation* popup, or accept it (the new image will at least be a new seed). *Old prompt, new image* sends the same prompt on purpose; only the picture is re-rolled. |
 | Two generations at once | Not possible by design; the second one is refused with a toast. |
 
 Console logging: everything is prefixed with `[swarm]`, including the exact request that was sent
