@@ -739,11 +739,7 @@ function renderAllControls() {
         labels: settings.scheduler_names ?? [],
     });
 
-    const loras = Array.isArray(settings.resources.loras) ? settings.resources.loras : [];
-    fillSelect('#swarm_lora_select', loras.map((l) => l.name), null, {
-        labels: loras.map((l) => l.title),
-        placeholder: '— no LoRAs found —',
-    });
+    fillLoraSelect();
 
     $('#swarm_base_url').val(settings.base_url);
     $('#swarm_transport').val(settings.transport);
@@ -788,6 +784,40 @@ function hasLoraTag(prompt, lora) {
     return new RegExp(`<lora:[^>]*${name}[^>]*>`, 'i').test(String(prompt ?? ''));
 }
 
+/**
+ * Repaints the LoRA dropdown, ticking the LoRAs that are active. The tick in the list is the
+ * only feedback some phones show, since the chip row can sit below the visible area.
+ */
+function fillLoraSelect() {
+    const settings = getSettings();
+    const loras = Array.isArray(settings.resources.loras) ? settings.resources.loras : [];
+    const $select = $('#swarm_lora_select');
+    if (!$select.length) {
+        return;
+    }
+
+    const current = String($select.val() ?? '');
+    const active = new Set((settings.loras ?? []).map((lora) => lora.name));
+    $select.empty();
+
+    if (loras.length === 0) {
+        $('<option></option>').val('').text('— no LoRAs found —').appendTo($select);
+        return;
+    }
+
+    for (const lora of loras) {
+        // "Title (file.safetensors)" only when the title adds something over the file name.
+        const plainName = String(lora.name).replace(/\.[^.]+$/, '');
+        const label = lora.title && lora.title !== plainName ? `${lora.title} (${lora.name})` : lora.name;
+        $('<option></option>')
+            .val(lora.name)
+            .text(`${active.has(lora.name) ? '✓ ' : ''}${label}`)
+            .appendTo($select);
+    }
+
+    $select.val(loras.some((lora) => lora.name === current) ? current : loras[0].name);
+}
+
 function renderLoraChips() {
     const settings = getSettings();
     const $chips = $('#swarm_lora_chips');
@@ -797,7 +827,7 @@ function renderLoraChips() {
     $chips.empty();
 
     if (!settings.loras.length) {
-        $chips.append($('<span class="swarm-chips-empty"></span>').text('No active LoRAs — pick one above and press Add.'));
+        $chips.append($('<span class="swarm-chips-empty"></span>').text('No active LoRAs — choose one above to activate it.'));
         return;
     }
 
@@ -810,6 +840,7 @@ function renderLoraChips() {
             settings.loras.splice(index, 1);
             saveSettings();
             renderLoraChips();
+            fillLoraSelect();
         });
         $chip.append($remove);
         $chips.append($chip);
@@ -833,6 +864,7 @@ function addLoraFromUi() {
     settings.lora_weight = weight;
     saveSettings();
     renderLoraChips();
+    fillLoraSelect();
     if (weight === 0) {
         toastrSafe('warning', 'A LoRA weight of 0 disables the LoRA; use a value like 0.8.');
     }
@@ -1582,14 +1614,34 @@ function bindSettingsEvents() {
     });
 
     $('#swarm_lora_add').on('click', () => addLoraFromUi());
+    // Choosing a LoRA in the list activates it immediately: the dropdown and the weight box are
+    // the live controls. The "+ Add" button only exists to re-apply the weight.
     $('#swarm_lora_select').on('change', () => {
-        // SwarmUI reports a default weight for some LoRAs; prefer it over the generic one.
-        const loras = getSettings().resources.loras ?? [];
+        const settings = getSettings();
+        const loras = settings.resources.loras ?? [];
         const selected = loras.find((lora) => lora.name === String($('#swarm_lora_select').val() ?? ''));
-        const weight = asNumber(selected?.default_weight, null);
-        if (weight !== null && weight > 0) {
-            $('#swarm_lora_weight').val(weight);
+        const serverWeight = asNumber(selected?.default_weight, null);
+        if (serverWeight !== null && serverWeight > 0) {
+            $('#swarm_lora_weight').val(serverWeight);
         }
+        addLoraFromUi();
+    });
+    // Retyping the weight updates the active chip of the selected LoRA on the fly.
+    $('#swarm_lora_weight').on('input', () => {
+        const settings = getSettings();
+        const name = String($('#swarm_lora_select').val() ?? '');
+        const lora = (settings.loras ?? []).find((entry) => entry.name === name);
+        if (!lora) {
+            return;
+        }
+        const weight = asNumber($('#swarm_lora_weight').val(), lora.weight);
+        if (weight === lora.weight) {
+            return;
+        }
+        lora.weight = weight;
+        settings.lora_weight = weight;
+        saveSettings();
+        renderLoraChips();
     });
     $('#swarm_lora_weight').on('keydown', (event) => {
         if (event.key === 'Enter') {

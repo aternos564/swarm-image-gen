@@ -78,9 +78,10 @@ Option A works exactly the same from the phone's browser. Two things to remember
    a good starting point.
 5. **Prefix tags / Suffix tags / Negative prompt** — your usual quality tags. Prefix tags go in before the
    scene, suffix tags after it.
-6. **LoRAs** — choose one from the dropdown, set a weight, press **+ Add**. It appears as a chip and its
-   `<lora:name:weight>` tag is appended to every prompt. Click the `✕` on a chip to remove it. Choosing a LoRA
-   in the dropdown alone does *not* activate it — the chip below the row is the list of what is active.
+6. **LoRAs** — choosing one in the dropdown activates it right away: it appears as a chip and its
+   `<lora:name:weight>` tag is appended to every prompt. Active LoRAs are ticked with `✓` in the dropdown.
+   Typing in the weight box updates the chip live; click the `✕` on a chip to remove it. (`+ Add` just
+   re-applies the current weight, and you can stack several LoRAs.)
 7. **Character look tags** — with a character open, fill in e.g.
    `1girl, long black hair, brown eyes, red kimono, tall`. Saved on the character card itself
    (`data.extensions.swarm_look_tags`) and always prepended to prompts for that character.
@@ -160,7 +161,7 @@ This must be enabled again after a config reset, and it is off by default.
 | Status: *"SwarmUI responded 400: Invalid session ID"* | The extension re-creates sessions automatically; if it persists, press **Connect** again. |
 | Model dropdown is empty | Press **Connect**. If the list is still empty, SwarmUI sees no models — check its `Models/Stable-Diffusion` folder and refresh SwarmUI's model list. |
 | *"Model 'X' is not on server"* | The saved checkpoint no longer exists on the SwarmUI side. Pick another one and press Connect. |
-| LoRA has no effect | First check the **Active LoRAs** list under the LoRA row — picking an entry in the dropdown is not enough, press **+ Add** so a chip appears. If the chip is there but the image ignores the LoRA, SwarmUI now says so in a toast (e.g. *"Lora 'x' does not exist and will be ignored"*) — that means the name is not in SwarmUI's list. Also check the LoRA's base model matches the checkpoint (SD1.5 LoRAs do nothing on an SDXL/Pony/Illustrious checkpoint). The weight lives in the chip — `0.8` is a sane start, `1.0+` is often too strong, and `0` disables the LoRA. |
+| LoRA has no effect | First check the **Active LoRAs** list under the LoRA row — the LoRA you pick in the dropdown is activated immediately and ticked with `✓` there. If the chip is there but the image ignores the LoRA, SwarmUI now says so in a toast (e.g. *"Lora 'x' does not exist and will be ignored"*) — that means the name is not in SwarmUI's list. Also check the LoRA's base model matches the checkpoint (SD1.5 LoRAs do nothing on an SDXL/Pony/Illustrious checkpoint). The weight lives in the chip — `0.8` is a sane start, `1.0+` is often too strong, and `0` disables the LoRA. |
 | *"Invalid value for parameter VAE"* | You are sending a VAE name SwarmUI does not have. Set VAE back to *Automatic*, or pick a real VAE file from the dropdown. |
 | The character's face keeps changing | Uncheck nothing — instead check the **look tags** are filled in for *that* character, and that the prompt is not dominated by scene tags. Also the seed: `-1` gives a new face every time. Fix a seed to compare. |
 | Image is posted but shows as a broken picture | The file was saved but the chat message points elsewhere. Reload and check `data/<user>/user/images/`. |
