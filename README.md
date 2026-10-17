@@ -11,7 +11,8 @@ extension, with the two things that one lacks:
 * **per-character look tags** — a fixed list of appearance (face/hair/body) tags per character, plus two dedicated
   **outfit** boxes (one per character, one for your persona). The appearance tags are always prepended to every
   prompt, and the outfit tags are written into every picture, so the character keeps her face *and* wears the same
-  outfit between generations instead of drifting image to image,
+  outfit between generations instead of drifting image to image. A **Tag emphasis** setting (default `1.2`) weights
+  those tags against the scene, so clothing words coming from the chat cannot quietly re-dress her,
 * **one obvious image button** — an entry in SillyTavern's own wand menu (the one with *Attach a File*), plus a
   wand button under every message. SillyTavern's built-in image button keeps working next to them; a checkbox in
   the panel hides it if you would rather see only SwarmUI's button.
@@ -92,15 +93,20 @@ Option A works exactly the same from the phone's browser. Two things to remember
    prepended to prompts for that character.
 8. **Character outfit** — clothing tags for that character, e.g. `red kimono, black obi, sandals`. Added to every
    picture of her (except *Me* and *Background*) so she wears the same outfit every time. Saved on the card too
-   (`data.extensions.swarm_outfit`). If the model still drifts, give the tags weight: `(red kimono:1.15)`.
+   (`data.extensions.swarm_outfit`). Be precise — `black satin nightgown, thin straps, white lace trim` pins much
+   better than `dress` — and use the **Tag emphasis** box below if the scene keeps changing it.
 9. **Your outfit** — clothing tags for your persona, e.g. `white shirt, black jeans`. Added to pictures that show
    you (*Me*, *The Whole Story*, *The Last Message*, free prompts), skipped for *Yourself*, *Your Face* and
    *Background*. Stored per persona in the extension settings.
    In group chats the character tags of whoever wrote the message are used automatically.
-10. *(optional)* Tick **Let the chat LLM write the scene prompt** and edit the instruction to taste. If your
+10. **Tag emphasis (weight)** — how hard the appearance and outfit tags are pushed against the scene. The default
+    `1.2` sends them wrapped in SwarmUI's weight syntax (`<weight[1.2]:…>`), so the scene (chat message or LLM) can
+    describe clothes of its own without re-dressing her. `1` sends plain tags; a fully consistent outfit usually
+    needs a precise garment description *and* a fixed seed (see Troubleshooting).
+11. *(optional)* Tick **Let the chat LLM write the scene prompt** and edit the instruction to taste. If your
     instruction asks for clothing, the scene's clothes fight the outfit boxes — leaving clothing out of the
     instruction keeps the outfit stable.
-11. *(optional)* Use the **caret** on the right of *Generate Image (SwarmUI)* in the wand menu (or `/swarm you`,
+12. *(optional)* Use the **caret** on the right of *Generate Image (SwarmUI)* in the wand menu (or `/swarm you`,
     `/swarm face`, …) to generate a picture of something specific instead of the current scene. Clicking the entry
     itself keeps generating from the current chat.
 
@@ -183,7 +189,7 @@ This must be enabled again after a config reset, and it is off by default.
 | LoRA has no effect | First check the **Active LoRAs** list under the LoRA row — the LoRA you pick in the dropdown is activated immediately and ticked with `✓` there. If the chip is there but the image ignores the LoRA, SwarmUI now says so in a toast (e.g. *"Lora 'x' does not exist and will be ignored"*) — that means the name is not in SwarmUI's list. Also check the LoRA's base model matches the checkpoint (SD1.5 LoRAs do nothing on an SDXL/Pony/Illustrious checkpoint). The weight lives in the chip — `0.8` is a sane start, `1.0+` is often too strong, and `0` disables the LoRA. |
 | *"Invalid value for parameter VAE"* | You are sending a VAE name SwarmUI does not have. Set VAE back to *Automatic*, or pick a real VAE file from the dropdown. |
 | The character's face keeps changing | Check that the **Appearance** box is filled in for *that* character (face/hair/eyes), and that the prompt is not dominated by scene tags. Also the seed: `-1` gives a new face every time. Fix a seed to compare. |
-| The outfit changes a little between images | The scene prompt is fighting the outfit tags. Put the clothes into **Character outfit** (not into Appearance), remove clothing from your *Let the chat LLM write the scene prompt* instruction, and give the tags weight like `(red kimono:1.15)`. A fixed seed helps comparing. |
+| The outfit changes a little between images | Four things can fight the outfit, in order of impact: (1) **the scene describes clothes of its own** — the chat message or LLM scene adds words like *nightgown, lifted dress, brown skin* that compete with your outfit tags; keep a precise garment description and raise **Tag emphasis** to `1.3`, or delete the clothing words in the *Edit prompts before generation* popup while you are setting the look up. (2) **Seed `-1`** re-rolls the garment's details (cut, pattern, frills) on every click — a fixed seed keeps a set of images nearly identical. (3) **A character LoRA** trained on someone else drags *its* wardrobe along at weight `1.0` — lower it to `0.5–0.7` when the outfit must come from the prompt. (4) Vague words: `dress` gives a different dress every time, `black satin nightgown, thin straps, white lace trim` pins it. For a pixel-identical outfit, the prompt *and* the seed must both stay identical. |
 | Image is posted but shows as a broken picture | The file was saved but the chat message points elsewhere. Reload and check `data/<user>/user/images/`. |
 | Nothing happens when I click the wand button | Open the browser console (F12) and look for `[swarm]` lines. If the button is missing entirely, the extension did not load — reload the page. If you clicked the *paintbrush* button, that was SillyTavern's built-in image extension, not this one. Clicking the very right edge of the entry (the `›` caret) opens the source list instead of generating. |
 | The *Edit prompts before generation* popup is empty | No chat prompt could be built (empty chat or empty message). Type what you want into the box — the appearance, outfit, prefix/suffix and LoRA tags and the negative prompt are added to whatever is in there when you press Continue. |
@@ -200,11 +206,16 @@ Console logging: everything is prefixed with `[swarm]`, including the exact requ
 * Core SillyTavern files are never modified, and `auto_update` is on (update from *Manage extensions*), so the
   extension survives SillyTavern updates. It only imports `saveBase64AsFile` from `scripts/utils.js` and takes
   everything else from `SillyTavern.getContext()`.
-* SillyTavern's built-in *Image Generation* (Stable Diffusion) extension is a different extension with a fixed
-  backend list (ComfyUI, Automatic1111, Extras, cloud APIs) that can never point at SwarmUI. Its button is left
-  alone and stays visible; tick *Hide SillyTavern's built-in image buttons* in the panel if you want a single
-  image button (a pure body-class/CSS toggle, nothing outside this folder is touched). SwarmUI also 404s on the
-  A1111-compatible `/sdapi/v1/` paths, so pointing the built-in panel at it is not an option either.
+* SillyTavern's built-in *Image Generation* (Stable Diffusion) extension is a different extension and ignores this
+  panel completely: it cannot talk to the SwarmUI API (SwarmUI also 404s on the A1111-compatible `/sdapi/v1/`
+  paths), and its per-character prompt, LoRAs and prompt templates live in *its own* settings — even when its
+  ComfyUI backend is pointed at the ComfyUI that runs behind SwarmUI, pictures made through its button never
+  contain the appearance/outfit tags from this panel. Use this extension's wand entry for those. The built-in
+  button is left alone and stays visible; tick *Hide SillyTavern's built-in image buttons* in the panel if you
+  want a single image button (a pure body-class/CSS toggle, nothing outside this folder is touched).
 * Prompts are cleaned up before being sent (newlines/quotes/markdown removed, extra commas collapsed,
   `<think>` blocks dropped). Non-Latin characters are stripped, because CLIP cannot read them anyway.
 * Appearance/outfit tags, prefix/suffix tags and the negative prompt support SillyTavern macros (`{{char}}`, `{{user}}`, …).
+* **Tag emphasis** wraps each non-empty appearance/outfit box in SwarmUI's own weight syntax
+  (`<weight[1.2]:your tags>`); `1` sends plain tags. The scene, prefix/suffix tags and LoRA tags are sent exactly
+  as configured — nothing else is rewritten.

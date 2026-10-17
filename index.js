@@ -39,6 +39,11 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const GENERATION_TIMEOUT_MS = 15 * 60 * 1000;
 const TAGS_SAVE_DELAY_MS = 600;
 const SCROLL_DELAY_MS = 200;
+/** Default emphasis of the appearance/outfit tags (1 = plain tags, no weighting). */
+const DEFAULT_TAG_WEIGHT = 1.2;
+/** Guards the emphasis setting so a typo cannot wreck every prompt. */
+const TAG_WEIGHT_MIN = 0.5;
+const TAG_WEIGHT_MAX = 1.8;
 
 /** Media enum values (scripts/constants.js). */
 const MEDIA_TYPE_IMAGE = 'image';
@@ -53,9 +58,9 @@ const DEFAULT_LLM_INSTRUCTION = [
     'You write image generation prompts for a Stable Diffusion model.',
     'Read the end of the chat and describe the current scene as a single comma-separated list of visual tags.',
     'Include: shot framing (close-up, portrait, upper body, full body),',
-    'each visible character\'s appearance (hair colour and style, eye colour, clothing, accessories),',
-    'pose, expression, what they are doing, location, time of day, lighting and mood.',
-    'Use Danbooru-style tags (e.g. "1girl, solo, long black hair, brown eyes, red kimono"),',
+    'each visible character\'s pose, expression, what they are doing, location, time of day, lighting and mood.',
+    'Do not describe clothing or outfits; those are provided separately and must stay consistent.',
+    'Use Danbooru-style tags (e.g. "1girl, solo, sitting on a park bench, sunset"),',
     'never sentences, never quotes, never explanations, never markdown.',
     'Only output the tags themselves, on one line, separated by commas. Use at most 60 tags.',
 ].join(' ');
@@ -144,6 +149,8 @@ const defaultSettings = {
     use_look_tags: true,
     /** Outfit tags per persona avatar, so "Your outfit" can differ per persona. */
     user_outfits: {},
+    /** How hard the appearance/outfit tags are pushed against the scene (1 = plain tags). */
+    tag_weight: DEFAULT_TAG_WEIGHT,
     /** Optional: hide SillyTavern's built-in image buttons so only this extension's button remains. */
     hide_builtin_buttons: false,
     /** Show an editable popup with the finished prompt right before the request is sent. */
@@ -838,6 +845,7 @@ function renderAllControls() {
     $('#swarm_llm_prompt').prop('checked', !!settings.llm_prompt);
     $('#swarm_llm_instruction').val(settings.llm_instruction);
     $('#swarm_lora_weight').val(settings.lora_weight);
+    $('#swarm_tag_weight').val(settings.tag_weight ?? DEFAULT_TAG_WEIGHT);
 
     if (!settings.resources.models.length) {
         $('#swarm_status').text('Not connected. Set the URL and press Connect.');
@@ -1158,16 +1166,47 @@ function updateCharacterTagsUi() {
  * Prompt building
  * ------------------------------------------------------------------ */
 
+/** Keeps the emphasis setting inside sane limits (1 = plain tags). */
+function clampTagWeight(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+        return DEFAULT_TAG_WEIGHT;
+    }
+    return Math.min(TAG_WEIGHT_MAX, Math.max(TAG_WEIGHT_MIN, number));
+}
+
+/**
+ * Wraps a tag group in SwarmUI's own weight syntax: `<weight[1.2]:tags>`.
+ * This is what keeps an outfit from drifting: the scene prompt often brings its own
+ * clothing words (from the chat message or the LLM), and without emphasis those
+ * overrule the outfit boxes.
+ * @param {string} text Tag list
+ * @param {number} weight Emphasis, 1 returns the tags unchanged
+ * @returns {string}
+ */
+function weighTags(text, weight) {
+    const clean = String(text ?? '').trim();
+    if (!clean) {
+        return '';
+    }
+    const number = Number(weight);
+    if (!Number.isFinite(number) || Math.abs(number - 1) < 0.001) {
+        return clean;
+    }
+    return `<weight[${String(Number(number.toFixed(2)))}]:${clean}>`;
+}
+
 /**
  * Assembles the final SwarmUI prompt.
  * @param {{scene: string, appearanceTags?: string, characterOutfit?: string, userOutfit?: string, settings?: any}} options
  * @returns {string}
  */
 function buildPrompt({ scene, appearanceTags = '', characterOutfit = '', userOutfit = '', settings = getSettings() }) {
+    const weight = clampTagWeight(settings.tag_weight);
     const parts = [
-        substituteSafe(appearanceTags),
-        substituteSafe(characterOutfit),
-        substituteSafe(userOutfit),
+        weighTags(substituteSafe(appearanceTags), weight),
+        weighTags(substituteSafe(characterOutfit), weight),
+        weighTags(substituteSafe(userOutfit), weight),
         substituteSafe(settings.prefix_tags),
         scene,
         substituteSafe(settings.suffix_tags),
@@ -2011,6 +2050,11 @@ function bindSettingsEvents() {
             saveSettings();
         });
     }
+
+    $('#swarm_tag_weight').on('input', () => {
+        settings.tag_weight = clampTagWeight(asNumber($('#swarm_tag_weight').val(), settings.tag_weight));
+        saveSettings();
+    });
 
     $('#swarm_sampler').on('change', () => {
         settings.sampler = String($('#swarm_sampler').val() ?? '');

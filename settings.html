@@ -149,7 +149,7 @@
                           placeholder="red kimono, black obi, sandals"></textarea>
 
                 <div class="swarm-hint">
-                    <span data-i18n="Clothing tags for the current character. Added to every image of her (except Me and Background), so she wears the same outfit every time. If the model still changes it, give the tags weight: (red kimono:1.15). Stored per character avatar.">Clothing tags for the current character. Added to every image of her (except Me and Background), so she wears the same outfit every time. If the model still changes it, give the tags weight: (red kimono:1.15). Stored per character avatar.</span>
+                    <span data-i18n="Clothing tags for the current character. Added to every image of her (except Me and Background), so she wears the same outfit every time. Be precise — slim black lace nightgown with thin straps pins better than dress. Stored per character avatar.">Clothing tags for the current character. Added to every image of her (except Me and Background), so she wears the same outfit every time. Be precise — slim black lace nightgown with thin straps pins better than dress. Stored per character avatar.</span>
                 </div>
 
                 <div class="swarm-hint" id="swarm_user_outfit_target">
@@ -161,6 +161,13 @@
 
                 <div class="swarm-hint">
                     <span data-i18n="Clothing tags for your persona. Added to images that show you (Me, The Whole Story, The Last Message, free prompts), skipped for Yourself, Your Face and Background. Stored per persona.">Clothing tags for your persona. Added to images that show you (Me, The Whole Story, The Last Message, free prompts), skipped for Yourself, Your Face and Background. Stored per persona.</span>
+                </div>
+
+                <label class="swarm-label" for="swarm_tag_weight" data-i18n="Tag emphasis (weight)">Tag emphasis (weight)</label>
+                <input id="swarm_tag_weight" class="text_pole" type="number" min="0.5" max="1.8" step="0.05" />
+
+                <div class="swarm-hint">
+                    <span data-i18n="How hard the appearance and outfit tags are pushed against the scene (1.2 = recommended, 1 = plain tags without emphasis). This is what keeps the outfit stable when the scene itself describes clothes. The outfit can still change a little between images while the seed is -1 (random).">How hard the appearance and outfit tags are pushed against the scene (1.2 = recommended, 1 = plain tags without emphasis). This is what keeps the outfit stable when the scene itself describes clothes. The outfit can still change a little between images while the seed is -1 (random).</span>
                 </div>
             </div>
 
@@ -179,6 +186,10 @@
 
                 <label class="swarm-label" for="swarm_llm_instruction" data-i18n="Instruction for the LLM">Instruction for the LLM</label>
                 <textarea id="swarm_llm_instruction" class="text_pole autoSetHeight" rows="5"></textarea>
+
+                <div class="swarm-hint">
+                    <span data-i18n="If this instruction asks for clothing (wearing, outfit, dress…), the scene will describe clothes of its own and fight the outfit boxes. Telling the model to skip clothing keeps the outfit stable.">If this instruction asks for clothing (wearing, outfit, dress…), the scene will describe clothes of its own and fight the outfit boxes. Telling the model to skip clothing keeps the outfit stable.</span>
+                </div>
 
                 <div class="swarm-hint">
                     <span data-i18n="The caret next to &quot;Generate Image (SwarmUI)&quot; in the wand menu opens the same &quot;Send me a picture of:&quot; list as SillyTavern's built-in image extension: Yourself, Your Face, Me, The Whole Story, The Last Message, Raw Last Message and Background. The same shortcuts work as /swarm you, /swarm face, /swarm me, /swarm scene, /swarm last, /swarm raw_last and /swarm background.">The caret next to "Generate Image (SwarmUI)" in the wand menu opens the same "Send me a picture of:" list as SillyTavern's built-in image extension: Yourself, Your Face, Me, The Whole Story, The Last Message, Raw Last Message and Background. The same shortcuts work as /swarm you, /swarm face, /swarm me, /swarm scene, /swarm last, /swarm raw_last and /swarm background.</span>
