@@ -18,9 +18,10 @@ It also supports the same **"Send me a picture of:"** list as SillyTavern's buil
 (Yourself, Your Face, Me, The Whole Story, The Last Message, Raw Last Message, Background — also available as
 `/swarm you`, `/swarm face`, …), letting the chat model write the image prompt from the current scene, an
 optional popup to review and edit the chat prompt before it is sent (*Edit prompts before generation*),
-interactive mode (auto-generate when you ask for a picture in chat), a function tool so tool-capable models can
-request images themselves, keeps a busy-lock so two generations can never overlap, and saves every picture into
-SillyTavern's own user images folder.
+**New prompt / Old prompt, new image** (reuse the last chat prompt for a fresh picture without asking the model,
+so no tokens are spent), interactive mode (auto-generate when you ask for a picture in chat), a function tool so
+tool-capable models can request images themselves, a busy-lock so two generations can never overlap, and every
+picture is saved into SillyTavern's own user images folder.
 
 ---
 
@@ -107,6 +108,7 @@ Option A works exactly the same from the phone's browser. Two things to remember
 | `send me a picture of a cat` in chat (*Use interactive mode* on) | Generates automatically, using the detected subject as the scene. |
 | Chat model calling the `GenerateImageSwarmUI` function tool (*Use function tool* on) | Tool-capable models request the image themselves during the scene. |
 | *Edit prompts before generation* on | Every trigger above first opens a popup with **only the chat prompt** — no look tags, no prefix/suffix tags, no LoRA tags, no negative prompt — so it can be corrected or the generation cancelled. Everything else is added to the prompt afterwards, exactly as configured in the panel. |
+| *Ask: new prompt or old prompt* on | The wand menu entry, the message button and **Generate now** first ask **New prompt** (the prompt is written again — the chat model is asked when *Let the chat LLM write the scene prompt* is on, which uses tokens) or **Old prompt, new image** (the chat prompt of the last image is reused and a new picture is made without asking the model, so it costs no tokens). The question only appears once a previous prompt exists. |
 
 Optional arguments: `/swarm quiet=true width=832 height=1216 steps=30 cfg=5 seed=1234 model=... sampler=... scheduler=... vae=... images=1`
 (`quiet=true` generates without posting to chat). The value can also be one of the source shortcuts above.

@@ -177,6 +177,16 @@
                     <span data-i18n="The popup shows only the chat prompt (the part taken from the chat, or the prompt you typed after /swarm). The look tags, prefix/suffix tags, LoRA tags and the negative prompt are added automatically when you press Continue.">The popup shows only the chat prompt (the part taken from the chat, or the prompt you typed after /swarm). The look tags, prefix/suffix tags, LoRA tags and the negative prompt are added automatically when you press Continue.</span>
                 </div>
 
+                <label for="swarm_ask_prompt_choice" class="checkbox_label"
+                       title="When an image button is pressed, first ask whether to write a new prompt or to reuse the chat prompt of the last image. Reusing asks the chat model nothing and costs no tokens.">
+                    <input type="checkbox" id="swarm_ask_prompt_choice" />
+                    <span data-i18n="Ask: new prompt or old prompt">Ask: new prompt or old prompt</span>
+                </label>
+
+                <div class="swarm-hint">
+                    <span data-i18n="The wand menu entry, the message button and Generate now then ask first: New prompt (the chat model is asked when &quot;Let the chat LLM write the scene prompt&quot; is on — this uses tokens) or Old prompt, new image (reuses the chat prompt of the last image and costs nothing). Nothing is asked before the first image exists.">The wand menu entry, the message button and Generate now then ask first: New prompt (the chat model is asked when "Let the chat LLM write the scene prompt" is on — this uses tokens) or Old prompt, new image (reuses the chat prompt of the last image and costs nothing). Nothing is asked before the first image exists.</span>
+                </div>
+
                 <label for="swarm_interactive_mode" class="checkbox_label"
                        title="Automatically generate an image when you send a message like 'send me a picture of a cat'.">
                     <input type="checkbox" id="swarm_interactive_mode" />

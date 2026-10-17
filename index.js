@@ -138,6 +138,15 @@ const defaultSettings = {
     hide_builtin_buttons: false,
     /** Show an editable popup with the finished prompt right before the request is sent. */
     edit_before_generation: false,
+    /**
+     * Ask "New prompt" or "Old prompt, new image" when an image button is pressed. Reusing the
+     * last chat prompt costs no tokens, which matters when the chat LLM writes the prompts.
+     */
+    ask_prompt_choice: true,
+    /** The chat prompt of the last image, offered as "Old prompt, new image". */
+    last_prompt: '',
+    /** The "Send me a picture of:" source of the last image, reused together with last_prompt. */
+    last_source: '',
     /** Watch outgoing user messages for image requests ("send me a picture of a cat") and generate automatically. */
     interactive_mode: false,
     /** Offer image generation to the chat model as a callable function tool. */
@@ -298,6 +307,17 @@ function fixImagePrompt(prompt) {
         .map((x) => x.trim())
         .filter((x) => x.length > 0)
         .join(', ');
+}
+
+/** Escapes text that goes into a popup body (popup text is inserted as HTML). */
+function escapeForPopup(text) {
+    return String(text ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+    }[char]));
 }
 
 /** Removes text that we never want inside an image prompt. */
@@ -1228,6 +1248,81 @@ async function reviewSceneBeforeSending(sceneText) {
 }
 
 /**
+ * Asks what the pressed image button should do: write a new prompt (the chat model may be
+ * asked again, which costs tokens) or reuse the chat prompt of the last image. Only called
+ * when the setting is on and a previous prompt exists.
+ * @returns {Promise<'new'|'reuse'|'cancel'>}
+ */
+async function askPromptChoice() {
+    const popupShow = ctx().Popup?.show;
+    if (typeof popupShow?.confirm !== 'function') {
+        return 'new';
+    }
+
+    const lastPrompt = String(getSettings().last_prompt ?? '').trim();
+    const preview = lastPrompt.length > 220 ? `${lastPrompt.slice(0, 220)}…` : lastPrompt;
+    const result = await popupShow.confirm(
+        'Generate an image',
+        [
+            '<div>The chat prompt of the last image was:</div>',
+            `<div><i>${escapeForPopup(preview)}</i></div>`,
+            '<div><small>Write a new prompt, or reuse that one and only make a new image (no chat model call, no tokens).</small></div>',
+        ].join(''),
+        {
+            customButtons: [
+                {
+                    text: 'New prompt',
+                    result: 1,
+                    tooltip: 'Write the prompt again. With "Let the chat LLM write the scene prompt" this asks the chat model and uses tokens.',
+                },
+                {
+                    text: 'Old prompt, new image',
+                    result: 2,
+                    tooltip: 'Reuse the chat prompt of the last image. Costs no tokens.',
+                },
+            ],
+            okButton: false,
+            cancelButton: 'Cancel',
+        },
+    );
+
+    if (result === 2) {
+        return 'reuse';
+    }
+    if (result === 1) {
+        return 'new';
+    }
+    return 'cancel';
+}
+
+/**
+ * Entry point for the buttons that generate from the chat (wand menu entry, message button,
+ * "Generate now"). Offers "New prompt" or "Old prompt, new image" first when that is switched
+ * on and a previous prompt exists, so a new image can be made without asking the chat model.
+ * @param {{sceneText?: string, forceLlm?: boolean, quiet?: boolean, overrides?: object, targetAvatar?: string|null, source?: string}} options
+ * @returns {Promise<string>} The saved image path (empty on failure or cancel).
+ */
+async function generateFromButton(options = {}) {
+    const settings = getSettings();
+    if (settings.ask_prompt_choice !== false && String(settings.last_prompt ?? '').trim()) {
+        const choice = await askPromptChoice();
+        if (choice === 'reuse') {
+            log('Reusing the last chat prompt:', settings.last_prompt);
+            return await generateImage({
+                ...options,
+                sceneText: settings.last_prompt,
+                source: String(settings.last_source ?? ''),
+            });
+        }
+        if (choice !== 'new') {
+            toastrSafe('info', 'Image generation cancelled.');
+            return '';
+        }
+    }
+    return await generateImage(options);
+}
+
+/**
  * Runs a full generation and posts the result to chat.
  * @param {{sceneText?: string, forceLlm?: boolean, quiet?: boolean, overrides?: object, targetAvatar?: string|null, source?: string}} options
  * @returns {Promise<string>} The saved image path (empty on failure).
@@ -1272,6 +1367,11 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
         if (settings.edit_before_generation) {
             scene = removeActiveLoraTags(await reviewSceneBeforeSending(scene));
         }
+
+        // Remember what was drawn, so the buttons can offer "old prompt, new image" later.
+        settings.last_prompt = scene;
+        settings.last_source = source;
+        saveSettings();
 
         // 4. Parameters. Prefix, suffix, look and LoRA tags are added here - after the
         //    review - so the popup only ever shows the chat prompt itself.
@@ -1618,7 +1718,7 @@ async function onMessageButtonClick(event) {
 
     const avatar = message.original_avatar ?? null;
     const scene = stripFormatting(message.mes);
-    await generateImage({ sceneText: scene, targetAvatar: avatar });
+    await generateFromButton({ sceneText: scene, targetAvatar: avatar });
 }
 /* ------------------------------------------------------------------ *
  * Slash command
@@ -1901,7 +2001,7 @@ function bindSettingsEvents() {
     });
 
     $('#swarm_generate_now').on('click', async () => {
-        await generateImage({});
+        await generateFromButton({});
     });
 
     $('#swarm_hide_builtin').prop('checked', settings.hide_builtin_buttons === true);
@@ -1914,6 +2014,7 @@ function bindSettingsEvents() {
 
     const checkboxBindings = {
         '#swarm_edit_before_generation': 'edit_before_generation',
+        '#swarm_ask_prompt_choice': 'ask_prompt_choice',
         '#swarm_interactive_mode': 'interactive_mode',
         '#swarm_function_tool': 'function_tool',
     };
@@ -1926,7 +2027,7 @@ function bindSettingsEvents() {
         });
     }
 
-    $(document).on('click', '#swarm_menu_gen', () => generateImage({}));
+    $(document).on('click', '#swarm_menu_gen', () => generateFromButton({}));
 
     $(document).on('click', `.mes_button.${MESSAGE_BUTTON_CLASS}`, (event) => {
         if (busy) {
