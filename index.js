@@ -83,6 +83,12 @@ const defaultSettings = {
     use_look_tags: true,
     /** Optional: hide SillyTavern's built-in image buttons so only this extension's button remains. */
     hide_builtin_buttons: false,
+    /** Show an editable popup with the finished prompt right before the request is sent. */
+    edit_before_generation: false,
+    /** Watch outgoing user messages for image requests ("send me a picture of a cat") and generate automatically. */
+    interactive_mode: false,
+    /** Offer image generation to the chat model as a callable function tool. */
+    function_tool: false,
     llm_prompt: false,
     llm_instruction: DEFAULT_LLM_INSTRUCTION,
     /** Cached dropdown contents so the UI is not empty after a reload. */
@@ -935,6 +941,64 @@ async function writeScenePrompt() {
  * ------------------------------------------------------------------ */
 
 /**
+ * "Edit prompts before generation": shows the fully assembled positive/negative prompt in a
+ * popup so it can be corrected, or the generation cancelled, before anything reaches SwarmUI.
+ * @param {{prompt: string, negativeprompt: string}} params Generation parameters, edited in place
+ * @returns {Promise<void>} Throws an error with `.cancelled` set when the user cancels
+ */
+async function reviewPromptBeforeSending(params) {
+    const popupShow = ctx().Popup?.show;
+    if (typeof popupShow?.input !== 'function') {
+        warn('This SillyTavern version has no popup API; sending the prompt as it is.');
+        return;
+    }
+
+    const edited = await popupShow.input(
+        'Review and edit the prompt',
+        'Press "Cancel" to abort the image generation.',
+        String(params.prompt ?? '').trim(),
+        {
+            rows: 8,
+            okButton: 'Continue',
+            cancelButton: 'Cancel',
+            customInputs: [{
+                id: 'swarm_refine_negative',
+                label: 'Negative prompt (optional)',
+                type: 'textarea',
+                rows: 4,
+                defaultState: String(params.negativeprompt ?? ''),
+            }],
+            onClose: (popup) => {
+                if (!popup?.result || !(popup.inputResults instanceof Map)) {
+                    return;
+                }
+                const negative = popup.inputResults.get('swarm_refine_negative');
+                if (negative !== undefined) {
+                    params.negativeprompt = String(negative).trim();
+                }
+            },
+        },
+    );
+
+    const cancelled = (message) => {
+        const error = new Error(message);
+        error.cancelled = true;
+        return error;
+    };
+
+    if (edited === null || edited === undefined) {
+        throw cancelled('Image generation cancelled.');
+    }
+
+    params.prompt = String(edited).trim();
+    if (!params.prompt) {
+        throw cancelled('The prompt is empty; generation cancelled.');
+    }
+
+    log('Prompt reviewed before generation:', { prompt: params.prompt, negative: params.negativeprompt });
+}
+
+/**
  * Runs a full generation and posts the result to chat.
  * @param {{sceneText?: string, forceLlm?: boolean, quiet?: boolean, overrides?: object, targetAvatar?: string|null}} options
  * @returns {Promise<string>} The saved image path (empty on failure).
@@ -995,6 +1059,11 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
             params.vae = String(vae);
         }
 
+        // 3b. Optional: let the user review and change the prompt before anything is sent.
+        if (settings.edit_before_generation) {
+            await reviewPromptBeforeSending(params);
+        }
+
         log('Request:', {
             model: params.model,
             sampler: params.sampler,
@@ -1045,6 +1114,10 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
         toastrSafe('success', `Image generated in ${seconds}s.`);
         return savedPath;
     } catch (error) {
+        if (error?.cancelled) {
+            toastrSafe('info', String(error.message ?? 'Image generation cancelled.'));
+            return '';
+        }
         if (error?.name === 'AbortError') {
             toastrSafe('info', 'Generation stopped.');
             return '';
@@ -1443,6 +1516,20 @@ function bindSettingsEvents() {
         applyBuiltinImageUiVisibility();
     });
 
+    const checkboxBindings = {
+        '#swarm_edit_before_generation': 'edit_before_generation',
+        '#swarm_interactive_mode': 'interactive_mode',
+        '#swarm_function_tool': 'function_tool',
+    };
+    for (const [selector, key] of Object.entries(checkboxBindings)) {
+        $(selector).prop('checked', settings[key] === true);
+        $(selector).on('change', () => {
+            settings[key] = !!$(selector).prop('checked');
+            saveSettings();
+            registerSwarmFunctionTool();
+        });
+    }
+
     $(document).on('click', '#swarm_menu_gen', () => generateImage({}));
 
     $(document).on('click', `.mes_button.${MESSAGE_BUTTON_CLASS}`, (event) => {
@@ -1451,6 +1538,94 @@ function bindSettingsEvents() {
             return;
         }
         onMessageButtonClick(event);
+    });
+}
+
+/** Matches chat messages like "send me a picture of a cat" (the built-in extension uses a similar pattern). */
+const INTERACTIVE_ACTIVATION_REGEX = /\b(send|mail|imagine|generate|make|create|draw|paint|render|show)\b.{0,10}\b(pic|picture|image|drawing|painting|photo|photograph)\b(?:\s+of)?(?:\s+(?:a|an|the|this|that|those|your)?\s+)?(.+)/i;
+
+/** Name of the function tool offered to the chat model. */
+const FUNCTION_TOOL_NAME = 'GenerateImageSwarmUI';
+/** Display name of the function tool offered to the chat model. */
+const FUNCTION_TOOL_DISPLAY_NAME = 'Generate Image (SwarmUI)';
+
+/**
+ * "Interactive mode": when the user's own message asks for a picture, generate it right away,
+ * using the detected subject as the scene prompt.
+ * @returns {Promise<void>}
+ */
+async function onMessageSentForInteractiveMode() {
+    const settings = getSettings();
+    if (!settings.interactive_mode || busy) {
+        return;
+    }
+    // With the function tool enabled, the chat model itself decides when a picture is wanted.
+    if (settings.function_tool && ctx().isToolCallingSupported?.()) {
+        return;
+    }
+
+    const lastMessage = ctx().chat?.at(-1);
+    if (!lastMessage?.is_user || !lastMessage.mes) {
+        return;
+    }
+
+    const subject = String(lastMessage.mes).match(INTERACTIVE_ACTIVATION_REGEX)?.[3]?.trim();
+    if (!subject) {
+        return;
+    }
+
+    log(`Interactive mode: generating "${subject}"`);
+    await generateImage({ sceneText: subject });
+}
+
+/**
+ * "Use function tool": lets the chat model itself call SwarmUI through SillyTavern's tool
+ * calling when the story calls for a picture.
+ * @returns {void}
+ */
+function registerSwarmFunctionTool() {
+    const context = ctx();
+    const settings = getSettings();
+    if (typeof context.registerFunctionTool !== 'function' || typeof context.unregisterFunctionTool !== 'function') {
+        return; // SillyTavern too old for extension function tools.
+    }
+
+    context.unregisterFunctionTool(FUNCTION_TOOL_NAME);
+    if (!settings.function_tool) {
+        return;
+    }
+    if (typeof context.isToolCallingSupported === 'function' && !context.isToolCallingSupported()) {
+        warn('The current chat completion source does not support function tools; the tool is ready but will only be used once one is selected.');
+    }
+
+    context.registerFunctionTool({
+        name: FUNCTION_TOOL_NAME,
+        displayName: FUNCTION_TOOL_DISPLAY_NAME,
+        description: [
+            'Generate an image from a text prompt with the local SwarmUI server and post it into the chat.',
+            'Use it when the user asks for a picture, a photo, a drawing, a selfie, or to imagine a scene.',
+        ].join(' '),
+        parameters: Object.freeze({
+            $schema: 'http://json-schema.org/draft-04/schema#',
+            type: 'object',
+            properties: {
+                prompt: {
+                    type: 'string',
+                    description: 'A comma separated image prompt in booru tag style, e.g. "1girl, red dress, garden, sunset".',
+                },
+            },
+            required: ['prompt'],
+        }),
+        action: async (args) => {
+            if (!args?.prompt) {
+                throw new Error('Missing "prompt" argument.');
+            }
+            const url = await generateImage({ sceneText: String(args.prompt) });
+            if (!url) {
+                throw new Error('Image generation failed.');
+            }
+            return encodeURI(url);
+        },
     });
 }
 
@@ -1467,6 +1642,7 @@ function bindChatEvents() {
     });
     source.on(events.MESSAGE_DELETED, () => setTimeout(injectMessageButtons, 50));
     source.on(events.MORE_MESSAGES_LOADED, () => setTimeout(injectMessageButtons, 50));
+    source.on(events.MESSAGE_SENT, () => onMessageSentForInteractiveMode());
     source.on(events.CHARACTER_EDITED, () => {
         lookTagsCache.clear();
         updateLookTagsUi();
@@ -1562,6 +1738,7 @@ export async function onActivate() {
                 const html = await loadSettingsHtml();
                 $('#extensions_settings2').append(html);
             }],
+            ['function tool', async () => registerSwarmFunctionTool()],
             ['wand menu entry', async () => {
                 installWandMenuEntry();
                 applyBuiltinImageUiVisibility();

@@ -159,6 +159,29 @@
                 <textarea id="swarm_llm_instruction" class="text_pole autoSetHeight" rows="5"></textarea>
             </div>
 
+            <!-- ========================= Generation modes ======================= -->
+            <div class="swarm-section">
+                <div class="swarm-section-title" data-i18n="Generation modes">Generation modes</div>
+
+                <label for="swarm_edit_before_generation" class="checkbox_label"
+                       title="Allow to edit the positive and negative prompt manually before they are sent to SwarmUI.">
+                    <input type="checkbox" id="swarm_edit_before_generation" />
+                    <span data-i18n="Edit prompts before generation">Edit prompts before generation</span>
+                </label>
+
+                <label for="swarm_interactive_mode" class="checkbox_label"
+                       title="Automatically generate an image when you send a message like 'send me a picture of a cat'.">
+                    <input type="checkbox" id="swarm_interactive_mode" />
+                    <span data-i18n="Use interactive mode">Use interactive mode</span>
+                </label>
+
+                <label for="swarm_function_tool" class="checkbox_label"
+                       title="Offer image generation to the chat model as a function tool, so the model itself can call SwarmUI when the scene calls for a picture. Needs a tool-capable model.">
+                    <input type="checkbox" id="swarm_function_tool" />
+                    <span data-i18n="Use function tool">Use function tool</span>
+                </label>
+            </div>
+
             <!-- ============================ Interface =========================== -->
             <div class="swarm-section">
                 <div class="swarm-section-title" data-i18n="Interface">Interface</div>

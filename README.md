@@ -12,8 +12,11 @@ extension, with the two things that one lacks:
   wand button under every message. SillyTavern's built-in image button keeps working next to them; a checkbox in
   the panel hides it if you would rather see only SwarmUI's button.
 
-It also supports letting the chat model write the image prompt from the current scene, keeps a busy-lock so two
-generations can never overlap, and saves every picture into SillyTavern's own user images folder.
+It also supports letting the chat model write the image prompt from the current scene, an optional popup to
+review and edit every prompt before it is sent (*Edit prompts before generation*), interactive mode
+(auto-generate when you ask for a picture in chat), a function tool so tool-capable models can request images
+themselves, keeps a busy-lock so two generations can never overlap, and saves every picture into SillyTavern's
+own user images folder.
 
 ---
 
@@ -90,6 +93,9 @@ Option A works exactly the same from the phone's browser. Two things to remember
 | `/swarm a girl on a throne` | Uses the given text as the scene prompt. |
 | `/swarm` (no text) | Always asks the chat model to write the scene prompt. |
 | **Generate now** button in the panel | Same as `/swarm` with no text. |
+| `send me a picture of a cat` in chat (*Use interactive mode* on) | Generates automatically, using the detected subject as the scene. |
+| Chat model calling the `GenerateImageSwarmUI` function tool (*Use function tool* on) | Tool-capable models request the image themselves during the scene. |
+| *Edit prompts before generation* on | Every trigger above first opens a popup with the finished prompt (and negative prompt), both editable. |
 
 Optional arguments: `/swarm quiet=true width=832 height=1216 steps=30 cfg=5 seed=1234 model=... sampler=... scheduler=... vae=... images=1`
 (`quiet=true` generates without posting to chat).
