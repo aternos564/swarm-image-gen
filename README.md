@@ -9,8 +9,8 @@ extension, with the two things that one lacks:
 * **per-character look tags** — a fixed list of appearance/face/hair/outfit tags per character, always
   prepended to every prompt, so the character keeps her face and clothes between images,
 * **one obvious image button** — an entry in SillyTavern's own wand menu (the one with *Attach a File*), plus a
-  wand button under every message. SillyTavern's built-in image buttons are hidden by default, so a prompt can
-  never end up at the wrong backend.
+  wand button under every message. SillyTavern's built-in image button keeps working next to them; a checkbox in
+  the panel hides it if you would rather see only SwarmUI's button.
 
 It also supports letting the chat model write the image prompt from the current scene, keeps a busy-lock so two
 generations can never overlap, and saves every picture into SillyTavern's own user images folder.
@@ -170,9 +170,9 @@ Console logging: everything is prefixed with `[swarm]`, including the exact requ
   extension survives SillyTavern updates. It only imports `saveBase64AsFile` from `scripts/utils.js` and takes
   everything else from `SillyTavern.getContext()`.
 * SillyTavern's built-in *Image Generation* (Stable Diffusion) extension is a different extension with a fixed
-  backend list (ComfyUI, Automatic1111, Extras, cloud APIs) that can never point at SwarmUI. This extension hides
-  its buttons by default — the checkbox *Hide SillyTavern's built-in image buttons* in the panel puts them back.
-  That is a pure body-class/CSS toggle; nothing outside this folder is touched. SwarmUI also 404s on the
+  backend list (ComfyUI, Automatic1111, Extras, cloud APIs) that can never point at SwarmUI. Its button is left
+  alone and stays visible; tick *Hide SillyTavern's built-in image buttons* in the panel if you want a single
+  image button (a pure body-class/CSS toggle, nothing outside this folder is touched). SwarmUI also 404s on the
   A1111-compatible `/sdapi/v1/` paths, so pointing the built-in panel at it is not an option either.
 * Prompts are cleaned up before being sent (newlines/quotes/markdown removed, extra commas collapsed,
   `<think>` blocks dropped). Non-Latin characters are stripped, because CLIP cannot read them anyway.

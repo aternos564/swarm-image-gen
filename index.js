@@ -81,8 +81,8 @@ const defaultSettings = {
     lora_weight: 0.8,
     /** Include per-character look tags in the prompt. */
     use_look_tags: true,
-    /** Hide SillyTavern's built-in image buttons (they use their own backend and can never reach SwarmUI). */
-    hide_builtin_buttons: true,
+    /** Optional: hide SillyTavern's built-in image buttons so only this extension's button remains. */
+    hide_builtin_buttons: false,
     llm_prompt: false,
     llm_instruction: DEFAULT_LLM_INSTRUCTION,
     /** Cached dropdown contents so the UI is not empty after a reload. */
@@ -250,6 +250,13 @@ function getSettings() {
         if (settings[key] === undefined) {
             settings[key] = structuredClone(value);
         }
+    }
+
+    // An early build had "hide the built-in image buttons" switched on by default and quietly removed
+    // SillyTavern's own button. It is off by default now, and a stored "on" nobody actually chose is
+    // dropped. Once the checkbox is used, hide_builtin_chosen remembers the real choice.
+    if (settings.hide_builtin_buttons === true && settings.hide_builtin_chosen !== true) {
+        settings.hide_builtin_buttons = false;
     }
 
     if (!Array.isArray(settings.loras)) {
@@ -1428,9 +1435,10 @@ function bindSettingsEvents() {
         await generateImage({});
     });
 
-    $('#swarm_hide_builtin').prop('checked', settings.hide_builtin_buttons !== false);
+    $('#swarm_hide_builtin').prop('checked', settings.hide_builtin_buttons === true);
     $('#swarm_hide_builtin').on('change', () => {
         settings.hide_builtin_buttons = !!$('#swarm_hide_builtin').prop('checked');
+        settings.hide_builtin_chosen = true;
         saveSettings();
         applyBuiltinImageUiVisibility();
     });
@@ -1501,7 +1509,7 @@ function installWandMenuEntry() {
  * @returns {void}
  */
 function applyBuiltinImageUiVisibility() {
-    const hide = getSettings().hide_builtin_buttons !== false;
+    const hide = getSettings().hide_builtin_buttons === true;
     $('body').toggleClass('swarm-hide-builtin-image', hide);
 }
 
