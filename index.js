@@ -1449,6 +1449,26 @@ function bindChatEvents() {
  * Entry point (manifest.json -> hooks.activate: "onActivate")
  * ------------------------------------------------------------------ */
 
+/**
+ * Loads settings.html from this module's own folder, whatever that folder is
+ * called, so the extension keeps working when the folder is renamed by hand,
+ * unzipped from a GitHub download (`swarm-image-gen-main`), or cloned under a
+ * different repository name.
+ * @returns {Promise<string>} The settings panel markup
+ */
+async function loadSettingsHtml() {
+    try {
+        const response = await fetch(new URL('settings.html', import.meta.url), { cache: 'no-cache' });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return await response.text();
+    } catch (error) {
+        warn('Could not fetch settings.html next to the module, using the SillyTavern helper instead.', error);
+        return await ctx().renderExtensionTemplateAsync('third-party/swarm-image-gen', 'settings');
+    }
+}
+
 let activated = false;
 
 /** Called by SillyTavern when the extension is activated. */
@@ -1471,7 +1491,7 @@ export async function onActivate() {
         /** Each step is isolated: one failure must not disable the whole extension. */
         const steps = [
             ['settings panel', async () => {
-                const html = await ctx().renderExtensionTemplateAsync('third-party/swarm-image-gen', 'settings');
+                const html = await loadSettingsHtml();
                 $('#extensions_settings2').append(html);
             }],
             ['message buttons', async () => injectMessageButtons()],
