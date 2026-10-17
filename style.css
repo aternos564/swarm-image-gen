@@ -124,6 +124,20 @@
     font-style: italic;
 }
 
+/* Optional: hide SillyTavern's built-in Image Generation buttons.
+   That extension talks to its own backend (ComfyUI, Automatic1111, Extras, ...) and can
+   never reach SwarmUI, so its buttons only get in the way of this extension's one button. */
+body.swarm-hide-builtin-image #sd_wand_container,
+body.swarm-hide-builtin-image .sd_message_gen,
+body.swarm-hide-builtin-image .sd_settings {
+    display: none !important;
+}
+
+/* The wand-menu entry shares the accent colour of the in-chat button. */
+#swarm_menu_gen .extensionsMenuExtensionButton {
+    color: var(--swarm-accent, #4db8ff);
+}
+
 /* Message button in the chat */
 .mes_button.swarm_mes_gen {
     /* Accent colour so it is never mixed up with SillyTavern's built-in image buttons. */

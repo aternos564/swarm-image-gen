@@ -159,8 +159,19 @@
                 <textarea id="swarm_llm_instruction" class="text_pole autoSetHeight" rows="5"></textarea>
             </div>
 
-            <div class="swarm-hint">
-                <span data-i18n="Tip: the wand button under a message generates from that message. The paintbrush button next to it belongs to SillyTavern's built-in Image Generation extension (its own backend) - not to SwarmUI.">Tip: the wand button under a message generates from that message. The paintbrush button next to it belongs to SillyTavern's built-in Image Generation extension (its own backend) - not to SwarmUI.</span>
+            <!-- ============================ Interface =========================== -->
+            <div class="swarm-section">
+                <div class="swarm-section-title" data-i18n="Interface">Interface</div>
+
+                <label for="swarm_hide_builtin" class="checkbox_label"
+                       title="SillyTavern's built-in Image Generation extension always uses its own backend (ComfyUI, Automatic1111, Extras, ...), never SwarmUI. Hiding its buttons leaves exactly one image button: this one.">
+                    <input type="checkbox" id="swarm_hide_builtin" />
+                    <span data-i18n="Hide SillyTavern's built-in image buttons">Hide SillyTavern's built-in image buttons</span>
+                </label>
+
+                <div class="swarm-hint">
+                    <span data-i18n="Generate from &quot;Generate Image (SwarmUI)&quot; in the wand menu next to the chat box, or from the blue wand button under any message. Both use SwarmUI.">Generate from "Generate Image (SwarmUI)" in the wand menu next to the chat box, or from the blue wand button under any message. Both use SwarmUI.</span>
+                </div>
             </div>
 
             <div class="swarm-row swarm-row-end">

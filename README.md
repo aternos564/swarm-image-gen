@@ -7,7 +7,10 @@ extension, with the two things that one lacks:
 * **full LoRA support** — LoRAs are sent as native `<lora:name:weight>` tags (SwarmUI parses them itself), and
   you can stack as many as you want with individual weights,
 * **per-character look tags** — a fixed list of appearance/face/hair/outfit tags per character, always
-  prepended to every prompt, so the character keeps her face and clothes between images.
+  prepended to every prompt, so the character keeps her face and clothes between images,
+* **one obvious image button** — an entry in SillyTavern's own wand menu (the one with *Attach a File*), plus a
+  wand button under every message. SillyTavern's built-in image buttons are hidden by default, so a prompt can
+  never end up at the wrong backend.
 
 It also supports letting the chat model write the image prompt from the current scene, keeps a busy-lock so two
 generations can never overlap, and saves every picture into SillyTavern's own user images folder.
@@ -31,9 +34,8 @@ leave *Branch or tag name* empty, press **Install just for me**, then reload the
 To pull updates later: *Extensions → Manage extensions → Update all* (you also get a toast when a new
 version is pushed, because the manifest enables `auto_update`).
 
-> The folder name matters: SillyTavern names the folder after the repository, and this extension loads its
-> settings panel from `third-party/swarm-image-gen/settings.html`. Keep the repo named `swarm-image-gen`,
-> and install it without renaming the folder.
+> The folder name does not matter: the extension loads its settings panel from its own directory, so a renamed
+> repo, a folder copied by hand or an unzipped `swarm-image-gen-main` all work.
 
 ### B. Copy the folder (no git, works offline)
 
@@ -83,7 +85,8 @@ Option A works exactly the same from the phone's browser. Two things to remember
 
 | Trigger | What it does |
 | --- | --- |
-| 🖼 button in a message's extra buttons (next to the paintbrush) | Generates an image for that message. With the LLM option on, the model rewrites the scene into image tags; otherwise the message text is used. |
+| **Generate Image (SwarmUI)** in the wand menu next to the chat box | Generates from the current chat: the last message, or an LLM-written scene when that option is on. |
+| Blue wand button in a message's extra buttons | Generates an image for that message. With the LLM option on, the model rewrites the scene into image tags; otherwise the message text is used. |
 | `/swarm a girl on a throne` | Uses the given text as the scene prompt. |
 | `/swarm` (no text) | Always asks the chat model to write the scene prompt. |
 | **Generate now** button in the panel | Same as `/swarm` with no text. |
@@ -152,7 +155,7 @@ This must be enabled again after a config reset, and it is off by default.
 | *"Invalid value for parameter VAE"* | You are sending a VAE name SwarmUI does not have. Set VAE back to *Automatic*, or pick a real VAE file from the dropdown. |
 | The character's face keeps changing | Uncheck nothing — instead check the **look tags** are filled in for *that* character, and that the prompt is not dominated by scene tags. Also the seed: `-1` gives a new face every time. Fix a seed to compare. |
 | Image is posted but shows as a broken picture | The file was saved but the chat message points elsewhere. Reload and check `data/<user>/user/images/`. |
-| Nothing happens when I click the 🖼 button | Open the browser console (F12) and look for `[swarm]` lines. If the button is missing entirely, the extension did not load — reload the page. |
+| Nothing happens when I click the wand button | Open the browser console (F12) and look for `[swarm]` lines. If the button is missing entirely, the extension did not load — reload the page. If you clicked the *paintbrush* button, that was SillyTavern's built-in image extension, not this one. |
 | Two generations at once | Not possible by design; the second one is refused with a toast. |
 
 Console logging: everything is prefixed with `[swarm]`, including the exact request that was sent
@@ -163,9 +166,14 @@ Console logging: everything is prefixed with `[swarm]`, including the exact requ
 ## Notes
 
 * Tested against **SwarmUI 0.9.8.3** and **SillyTavern 1.18.0**.
-* Core SillyTavern files are never modified, and `auto_update` is off, so the extension survives
-  SillyTavern updates. It only imports `saveBase64AsFile` from `scripts/utils.js` and takes everything else
-  from `SillyTavern.getContext()`.
+* Core SillyTavern files are never modified, and `auto_update` is on (update from *Manage extensions*), so the
+  extension survives SillyTavern updates. It only imports `saveBase64AsFile` from `scripts/utils.js` and takes
+  everything else from `SillyTavern.getContext()`.
+* SillyTavern's built-in *Image Generation* (Stable Diffusion) extension is a different extension with a fixed
+  backend list (ComfyUI, Automatic1111, Extras, cloud APIs) that can never point at SwarmUI. This extension hides
+  its buttons by default — the checkbox *Hide SillyTavern's built-in image buttons* in the panel puts them back.
+  That is a pure body-class/CSS toggle; nothing outside this folder is touched. SwarmUI also 404s on the
+  A1111-compatible `/sdapi/v1/` paths, so pointing the built-in panel at it is not an option either.
 * Prompts are cleaned up before being sent (newlines/quotes/markdown removed, extra commas collapsed,
   `<think>` blocks dropped). Non-Latin characters are stripped, because CLIP cannot read them anyway.
 * Look tags, prefix/suffix tags and the negative prompt support SillyTavern macros (`{{char}}`, `{{user}}`, …).

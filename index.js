@@ -81,6 +81,8 @@ const defaultSettings = {
     lora_weight: 0.8,
     /** Include per-character look tags in the prompt. */
     use_look_tags: true,
+    /** Hide SillyTavern's built-in image buttons (they use their own backend and can never reach SwarmUI). */
+    hide_builtin_buttons: true,
     llm_prompt: false,
     llm_instruction: DEFAULT_LLM_INSTRUCTION,
     /** Cached dropdown contents so the UI is not empty after a reload. */
@@ -1142,6 +1144,12 @@ const MESSAGE_BUTTON_CLASS = 'swarm_mes_gen';
 // so the two buttons in a message's action row can never be confused with each other.
 const MESSAGE_BUTTON_HTML = `<div title="Generate an image for this message (SwarmUI)" class="mes_button ${MESSAGE_BUTTON_CLASS} fa-solid fa-wand-magic-sparkles" data-i18n="[title]Generate an image for this message (SwarmUI)"></div>`;
 
+/** Entry in SillyTavern's wand menu - the one next to the chat box that holds "Attach a File" and friends. */
+const WAND_MENU_ITEM_HTML = `<div id="swarm_menu_gen" class="list-group-item flex-container flexGap5">
+    <div class="fa-solid fa-wand-magic-sparkles extensionsMenuExtensionButton" title="Generate an image from the current chat with SwarmUI" data-i18n="[title]Generate an image from the current chat with SwarmUI"></div>
+    <span data-i18n="Generate Image (SwarmUI)">Generate Image (SwarmUI)</span>
+</div>`;
+
 /** Adds the per-message button to the message template and to rendered messages. */
 function injectMessageButtons() {
     const $templateButtons = $('#message_template .extraMesButtons');
@@ -1420,6 +1428,15 @@ function bindSettingsEvents() {
         await generateImage({});
     });
 
+    $('#swarm_hide_builtin').prop('checked', settings.hide_builtin_buttons !== false);
+    $('#swarm_hide_builtin').on('change', () => {
+        settings.hide_builtin_buttons = !!$('#swarm_hide_builtin').prop('checked');
+        saveSettings();
+        applyBuiltinImageUiVisibility();
+    });
+
+    $(document).on('click', '#swarm_menu_gen', () => generateImage({}));
+
     $(document).on('click', `.mes_button.${MESSAGE_BUTTON_CLASS}`, (event) => {
         if (busy) {
             toastrSafe('warning', 'An image is already being generated.');
@@ -1446,6 +1463,38 @@ function bindChatEvents() {
         lookTagsCache.clear();
         updateLookTagsUi();
     });
+}
+
+/** Guards against adding the wand-menu entry twice (SillyTavern activates once per page load). */
+let wandMenuInstalled = false;
+
+/**
+ * Adds "Generate Image (SwarmUI)" to SillyTavern's wand menu, where the built-in
+ * "Generate Image" entry also lives, so the button is where people look for it
+ * instead of only inside the Extensions drawer.
+ * @returns {void}
+ */
+function installWandMenuEntry() {
+    if (wandMenuInstalled) {
+        return;
+    }
+    const $menu = $('#extensionsMenu');
+    if (!$menu.length) {
+        return; // SillyTavern moved its menu: skip silently instead of breaking the page.
+    }
+    wandMenuInstalled = true;
+    $menu.append(WAND_MENU_ITEM_HTML);
+}
+
+/**
+ * SillyTavern's built-in Image Generation extension always talks to its own backend
+ * (ComfyUI, Automatic1111, Extras, ...) and can never use SwarmUI, so its buttons only
+ * get in the way. They are hidden by default; the checkbox in the panel brings them back.
+ * @returns {void}
+ */
+function applyBuiltinImageUiVisibility() {
+    const hide = getSettings().hide_builtin_buttons !== false;
+    $('body').toggleClass('swarm-hide-builtin-image', hide);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1496,6 +1545,10 @@ export async function onActivate() {
             ['settings panel', async () => {
                 const html = await loadSettingsHtml();
                 $('#extensions_settings2').append(html);
+            }],
+            ['wand menu entry', async () => {
+                installWandMenuEntry();
+                applyBuiltinImageUiVisibility();
             }],
             ['message buttons', async () => injectMessageButtons()],
             ['settings events', async () => bindSettingsEvents()],
