@@ -5,7 +5,9 @@ into the SillyTavern chat. Built as a replacement for the built-in "Image Genera
 extension, with the two things that one lacks:
 
 * **full LoRA support** — LoRAs are sent as native `<lora:name:weight>` tags (SwarmUI parses them itself), and
-  you can stack as many as you want with individual weights,
+  you can stack as many as you want with individual weights. Active LoRAs stay authoritative: if you rewrite the
+  prompt in the *Edit prompts before generation* popup, their tags are appended again, and SwarmUI's own warnings
+  (a LoRA name it does not know) are shown as a toast instead of being swallowed.
 * **per-character look tags** — a fixed list of appearance/face/hair/outfit tags per character, always
   prepended to every prompt, so the character keeps her face and clothes between images,
 * **one obvious image button** — an entry in SillyTavern's own wand menu (the one with *Attach a File*), plus a
@@ -76,8 +78,9 @@ Option A works exactly the same from the phone's browser. Two things to remember
    a good starting point.
 5. **Prefix tags / Suffix tags / Negative prompt** — your usual quality tags. Prefix tags go in before the
    scene, suffix tags after it.
-6. **LoRAs** — choose one from the dropdown, set a weight, press `+`. It appears as a chip and its
-   `<lora:name:weight>` tag is appended to every prompt. Click the `✕` on a chip to remove it.
+6. **LoRAs** — choose one from the dropdown, set a weight, press **+ Add**. It appears as a chip and its
+   `<lora:name:weight>` tag is appended to every prompt. Click the `✕` on a chip to remove it. Choosing a LoRA
+   in the dropdown alone does *not* activate it — the chip below the row is the list of what is active.
 7. **Character look tags** — with a character open, fill in e.g.
    `1girl, long black hair, brown eyes, red kimono, tall`. Saved on the character card itself
    (`data.extensions.swarm_look_tags`) and always prepended to prompts for that character.
@@ -95,7 +98,7 @@ Option A works exactly the same from the phone's browser. Two things to remember
 | **Generate now** button in the panel | Same as `/swarm` with no text. |
 | `send me a picture of a cat` in chat (*Use interactive mode* on) | Generates automatically, using the detected subject as the scene. |
 | Chat model calling the `GenerateImageSwarmUI` function tool (*Use function tool* on) | Tool-capable models request the image themselves during the scene. |
-| *Edit prompts before generation* on | Every trigger above first opens a popup with the finished prompt (and negative prompt), both editable. |
+| *Edit prompts before generation* on | Every trigger above first opens a popup with the finished prompt (and negative prompt), both editable. Active LoRA tags are put back automatically if your edit removes them. |
 
 Optional arguments: `/swarm quiet=true width=832 height=1216 steps=30 cfg=5 seed=1234 model=... sampler=... scheduler=... vae=... images=1`
 (`quiet=true` generates without posting to chat).
@@ -157,7 +160,7 @@ This must be enabled again after a config reset, and it is off by default.
 | Status: *"SwarmUI responded 400: Invalid session ID"* | The extension re-creates sessions automatically; if it persists, press **Connect** again. |
 | Model dropdown is empty | Press **Connect**. If the list is still empty, SwarmUI sees no models — check its `Models/Stable-Diffusion` folder and refresh SwarmUI's model list. |
 | *"Model 'X' is not on server"* | The saved checkpoint no longer exists on the SwarmUI side. Pick another one and press Connect. |
-| LoRA has no effect | Check the chip is actually in the list (the tag is appended to every prompt), and check the LoRA's base model matches the checkpoint (SD1.5 LoRAs do nothing on an SDXL/Pony/Illustrious checkpoint). The weight lives in the chip — `0.8` is a sane start, `1.0+` is often too strong. |
+| LoRA has no effect | First check the **Active LoRAs** list under the LoRA row — picking an entry in the dropdown is not enough, press **+ Add** so a chip appears. If the chip is there but the image ignores the LoRA, SwarmUI now says so in a toast (e.g. *"Lora 'x' does not exist and will be ignored"*) — that means the name is not in SwarmUI's list. Also check the LoRA's base model matches the checkpoint (SD1.5 LoRAs do nothing on an SDXL/Pony/Illustrious checkpoint). The weight lives in the chip — `0.8` is a sane start, `1.0+` is often too strong, and `0` disables the LoRA. |
 | *"Invalid value for parameter VAE"* | You are sending a VAE name SwarmUI does not have. Set VAE back to *Automatic*, or pick a real VAE file from the dropdown. |
 | The character's face keeps changing | Uncheck nothing — instead check the **look tags** are filled in for *that* character, and that the prompt is not dominated by scene tags. Also the seed: `-1` gives a new face every time. Fix a seed to compare. |
 | Image is posted but shows as a broken picture | The file was saved but the chat message points elsewhere. Reload and check `data/<user>/user/images/`. |

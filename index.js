@@ -132,7 +132,11 @@ function cleanTypeName(name) {
     return String(name ?? '').toLowerCase().replace(/[^a-z]/g, '');
 }
 
+/** Converts a UI value to a number; an empty value falls back instead of becoming 0. */
 function asNumber(value, fallback) {
+    if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+        return fallback;
+    }
     const n = Number(value);
     return Number.isFinite(n) ? n : fallback;
 }
@@ -176,6 +180,52 @@ function blobToBase64(blob) {
         reader.onerror = () => reject(reader.error ?? new Error('Could not read the image data'));
         reader.readAsDataURL(blob);
     });
+}
+
+/**
+ * Pulls SwarmUI's prompt-parser warnings (unknown LoRA name, broken weight, …) out of a
+ * generated PNG. SwarmUI only reports these inside the image metadata, so without this the
+ * generation just silently ignores the offending tag.
+ * @param {string} base64 Raw image data, no data URL prefix
+ * @returns {string[]}
+ */
+function readParserWarnings(base64) {
+    try {
+        const text = atob(base64);
+        const key = text.indexOf('parser_warnings');
+        if (key < 0) {
+            return [];
+        }
+        const start = text.indexOf('[', key);
+        if (start < 0) {
+            return [];
+        }
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+        for (let i = start; i < text.length; i++) {
+            const char = text[i];
+            if (inString) {
+                if (escaped) escaped = false;
+                else if (char === '\\') escaped = true;
+                else if (char === '"') inString = false;
+                continue;
+            }
+            if (char === '"') inString = true;
+            else if (char === '[' || char === '{') depth++;
+            else if (char === ']' || char === '}') {
+                depth--;
+                if (depth === 0) {
+                    const parsed = JSON.parse(text.slice(start, i + 1));
+                    return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+                }
+            }
+        }
+        return [];
+    } catch (error) {
+        warn('Could not read the SwarmUI prompt warnings from the image.', error);
+        return [];
+    }
 }
 
 /**
@@ -588,7 +638,10 @@ async function connect({ silent = false } = {}) {
                 name: String(f.name),
                 title: f.title ? String(f.title) : String(f.name).replace(/\.[^.]+$/, ''),
                 trigger: f.trigger_phrase ? String(f.trigger_phrase) : '',
-                default_weight: asNumber(f.lora_default_weight, 1),
+                // SwarmUI reports "" when the LoRA has no default weight of its own.
+                default_weight: String(f.lora_default_weight ?? '').trim() === ''
+                    ? null
+                    : asNumber(f.lora_default_weight, null),
             })),
             vaes: vaeFiles.map((f) => String(f.name)).filter(Boolean).sort((a, b) => a.localeCompare(b)),
             samplers: Array.isArray(samplerParam?.values) ? samplerParam.values.map(String) : [],
@@ -715,6 +768,26 @@ function renderAllControls() {
     updateLookTagsUi();
 }
 
+/** SwarmUI resolves LoRAs by name, so the file extension is stripped from the tag. */
+function loraTagName(lora) {
+    return String(lora?.name ?? '').replace(/\.(safetensors|sft|ckpt|pt)$/i, '');
+}
+
+/**
+ * Builds the `<lora:name:weight>` tags for every active LoRA chip.
+ * @param {{loras?: {name: string, weight: number}[]}} [settings]
+ * @returns {string} Comma separated tags, or '' when no LoRA is active
+ */
+function buildLoraTags(settings = getSettings()) {
+    return (settings.loras ?? []).map((lora) => `<lora:${loraTagName(lora)}:${lora.weight}>`).join(', ');
+}
+
+/** True when the prompt already contains a `<lora:...>` tag for this LoRA. */
+function hasLoraTag(prompt, lora) {
+    const name = loraTagName(lora).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`<lora:[^>]*${name}[^>]*>`, 'i').test(String(prompt ?? ''));
+}
+
 function renderLoraChips() {
     const settings = getSettings();
     const $chips = $('#swarm_lora_chips');
@@ -724,7 +797,7 @@ function renderLoraChips() {
     $chips.empty();
 
     if (!settings.loras.length) {
-        $chips.append($('<span class="swarm-chips-empty"></span>').text('No active LoRAs.'));
+        $chips.append($('<span class="swarm-chips-empty"></span>').text('No active LoRAs — pick one above and press Add.'));
         return;
     }
 
@@ -750,7 +823,7 @@ function addLoraFromUi() {
         toastrSafe('warning', 'Pick a LoRA first (press Connect if the list is empty).');
         return;
     }
-    const weight = asNumber($('#swarm_lora_weight').val(), 1);
+    const weight = asNumber($('#swarm_lora_weight').val(), settings.lora_weight);
     const existing = settings.loras.find((l) => l.name === name);
     if (existing) {
         existing.weight = weight;
@@ -760,6 +833,9 @@ function addLoraFromUi() {
     settings.lora_weight = weight;
     saveSettings();
     renderLoraChips();
+    if (weight === 0) {
+        toastrSafe('warning', 'A LoRA weight of 0 disables the LoRA; use a value like 0.8.');
+    }
     log(`LoRA set: ${name}:${weight}`);
 }
 
@@ -885,10 +961,7 @@ function buildPrompt({ scene, lookTags = '', settings = getSettings() }) {
 
     const base = fixImagePrompt(parts.join(', '));
     // LoRA tags are appended after cleanup so they are never mangled.
-    // SwarmUI resolves LoRAs by name, so the file extension is stripped from the tag.
-    const loraTags = (settings.loras ?? [])
-        .map((lora) => `<lora:${String(lora.name).replace(/\.(safetensors|sft|ckpt|pt)$/i, '')}:${lora.weight}>`)
-        .join(', ');
+    const loraTags = buildLoraTags(settings);
 
     return loraTags ? (base ? `${base}, ${loraTags}` : loraTags) : base;
 }
@@ -953,9 +1026,14 @@ async function reviewPromptBeforeSending(params) {
         return;
     }
 
+    const activeLoras = getSettings().loras ?? [];
+    const loraHint = activeLoras.length
+        ? `<br><small>Active LoRAs are re-added automatically if your edit removes them: ${activeLoras.map((lora) => loraTagName(lora)).join(', ')}</small>`
+        : '';
+
     const edited = await popupShow.input(
         'Review and edit the prompt',
-        'Press "Cancel" to abort the image generation.',
+        `Press "Cancel" to abort the image generation.${loraHint}`,
         String(params.prompt ?? '').trim(),
         {
             rows: 8,
@@ -993,6 +1071,16 @@ async function reviewPromptBeforeSending(params) {
     params.prompt = String(edited).trim();
     if (!params.prompt) {
         throw cancelled('The prompt is empty; generation cancelled.');
+    }
+
+    // The active LoRAs in the panel stay authoritative: if the edit dropped one of
+    // their tags, append it again so the chips are always what SwarmUI receives.
+    const dropped = activeLoras.filter((lora) => !hasLoraTag(params.prompt, lora));
+    if (dropped.length > 0) {
+        const names = dropped.map((lora) => loraTagName(lora)).join(', ');
+        params.prompt = `${params.prompt}, ${dropped.map((lora) => `<lora:${loraTagName(lora)}:${lora.weight}>`).join(', ')}`;
+        toastrSafe('info', `Re-added LoRA tag(s) removed by the edit: ${names}.`);
+        log('Re-added LoRA tags after the prompt edit:', names);
     }
 
     log('Prompt reviewed before generation:', { prompt: params.prompt, negative: params.negativeprompt });
@@ -1159,6 +1247,11 @@ async function downloadImage(imagePath) {
 
     const blob = await response.blob();
     const base64 = await blobToBase64(blob);
+    const parserWarnings = readParserWarnings(base64);
+    if (parserWarnings.length > 0) {
+        warn('SwarmUI prompt warnings:', parserWarnings);
+        toastrSafe('warning', parserWarnings.join(' ').slice(0, 300));
+    }
     const extension = (path.match(/\.([a-z0-9]+)$/i)?.[1] ?? 'png').toLowerCase();
     const format = ALLOWED_IMAGE_FORMATS.includes(extension) ? extension : 'png';
     return { base64, format };
@@ -1489,6 +1582,15 @@ function bindSettingsEvents() {
     });
 
     $('#swarm_lora_add').on('click', () => addLoraFromUi());
+    $('#swarm_lora_select').on('change', () => {
+        // SwarmUI reports a default weight for some LoRAs; prefer it over the generic one.
+        const loras = getSettings().resources.loras ?? [];
+        const selected = loras.find((lora) => lora.name === String($('#swarm_lora_select').val() ?? ''));
+        const weight = asNumber(selected?.default_weight, null);
+        if (weight !== null && weight > 0) {
+            $('#swarm_lora_weight').val(weight);
+        }
+    });
     $('#swarm_lora_weight').on('keydown', (event) => {
         if (event.key === 'Enter') {
             addLoraFromUi();
