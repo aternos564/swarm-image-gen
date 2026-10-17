@@ -1,0 +1,8 @@
+*~
+*.bak
+*.bak-*
+*.orig
+*.rej
+node_modules/
+.DS_Store
+Thumbs.db

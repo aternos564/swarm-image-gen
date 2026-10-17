@@ -1,0 +1,171 @@
+<div id="swarm_settings" class="swarm-settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b data-i18n="Swarm Image Gen">Swarm Image Gen</b>
+            <div class="fa-solid fa-circle-chevron-down inline-drawer-icon down"></div>
+        </div>
+        <div class="inline-drawer-content">
+
+            <!-- ============================ Connection ============================ -->
+            <div class="swarm-section">
+                <div class="swarm-section-title" data-i18n="Connection">Connection</div>
+
+                <label class="swarm-label" for="swarm_base_url" data-i18n="SwarmUI base URL">SwarmUI base URL</label>
+                <div class="swarm-row">
+                    <input id="swarm_base_url" class="text_pole swarm-grow" type="text"
+                           placeholder="http://127.0.0.1:7801" />
+                    <div id="swarm_connect" class="menu_button swarm-nowrap"
+                         title="Test the connection and load models, LoRAs and samplers">
+                        <i class="fa-solid fa-plug"></i>
+                        <span data-i18n="Connect">Connect</span>
+                    </div>
+                </div>
+
+                <label class="swarm-label" for="swarm_transport" data-i18n="Request transport">Request transport</label>
+                <select id="swarm_transport" class="text_pole">
+                    <option value="auto" data-i18n="Auto (direct, then SillyTavern /proxy/)">Auto (direct, then SillyTavern /proxy/)</option>
+                    <option value="direct" data-i18n="Direct (browser to SwarmUI)">Direct (browser to SwarmUI)</option>
+                    <option value="proxy" data-i18n="SillyTavern /proxy/ only">SillyTavern /proxy/ only</option>
+                </select>
+
+                <div id="swarm_status" class="swarm-status">
+                    <span data-i18n="Not connected.">Not connected.</span>
+                </div>
+
+                <div id="swarm_transport_hint" class="swarm-hint">
+                    <span data-i18n="If direct fails with a network error, SwarmUI is blocking the browser origin (CORS). Enable the proxy in config.yaml (enableCorsProxy: true) or set AccessControlAllowOrigin in SwarmUI. See the README.">If direct fails with a network error, SwarmUI is blocking the browser origin (CORS). Enable the proxy in config.yaml (enableCorsProxy: true) or set AccessControlAllowOrigin in SwarmUI. See the README.</span>
+                </div>
+            </div>
+
+            <!-- ============================== Model =============================== -->
+            <div class="swarm-section">
+                <div class="swarm-section-title" data-i18n="Model">Model</div>
+
+                <label class="swarm-label" for="swarm_model" data-i18n="Checkpoint model">Checkpoint model</label>
+                <select id="swarm_model" class="text_pole"></select>
+
+                <label class="swarm-label" for="swarm_vae" data-i18n="VAE">VAE</label>
+                <select id="swarm_vae" class="text_pole"></select>
+            </div>
+
+            <!-- ============================= Sampling ============================ -->
+            <div class="swarm-section">
+                <div class="swarm-section-title" data-i18n="Sampling">Sampling</div>
+
+                <div class="swarm-grid">
+                    <div>
+                        <label class="swarm-label" for="swarm_width" data-i18n="Width">Width</label>
+                        <input id="swarm_width" class="text_pole" type="number" min="64" max="4096" step="64" />
+                    </div>
+                    <div>
+                        <label class="swarm-label" for="swarm_height" data-i18n="Height">Height</label>
+                        <input id="swarm_height" class="text_pole" type="number" min="64" max="4096" step="64" />
+                    </div>
+                    <div>
+                        <label class="swarm-label" for="swarm_steps" data-i18n="Steps">Steps</label>
+                        <input id="swarm_steps" class="text_pole" type="number" min="1" max="200" step="1" />
+                    </div>
+                    <div>
+                        <label class="swarm-label" for="swarm_cfg" data-i18n="CFG scale">CFG scale</label>
+                        <input id="swarm_cfg" class="text_pole" type="number" min="0" max="100" step="0.5" />
+                    </div>
+                </div>
+
+                <label class="swarm-label" for="swarm_sampler" data-i18n="Sampler">Sampler</label>
+                <select id="swarm_sampler" class="text_pole"></select>
+
+                <label class="swarm-label" for="swarm_scheduler" data-i18n="Scheduler (optional)">Scheduler (optional)</label>
+                <select id="swarm_scheduler" class="text_pole"></select>
+
+                <div class="swarm-grid">
+                    <div>
+                        <label class="swarm-label" for="swarm_seed" data-i18n="Seed (-1 = random)">Seed (-1 = random)</label>
+                        <input id="swarm_seed" class="text_pole" type="number" step="1" />
+                    </div>
+                    <div>
+                        <label class="swarm-label" for="swarm_images" data-i18n="Images per request">Images per request</label>
+                        <input id="swarm_images" class="text_pole" type="number" min="1" max="4" step="1" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================== Prompt ============================= -->
+            <div class="swarm-section">
+                <div class="swarm-section-title" data-i18n="Prompt">Prompt</div>
+
+                <label class="swarm-label" for="swarm_prefix_tags" data-i18n="Prefix tags (prepended)">Prefix tags (prepended)</label>
+                <textarea id="swarm_prefix_tags" class="text_pole autoSetHeight" rows="2"
+                          placeholder="masterpiece, best quality, highly detailed"></textarea>
+
+                <label class="swarm-label" for="swarm_suffix_tags" data-i18n="Suffix tags (appended)">Suffix tags (appended)</label>
+                <textarea id="swarm_suffix_tags" class="text_pole autoSetHeight" rows="2"
+                          placeholder="detailed background, cinematic lighting"></textarea>
+
+                <label class="swarm-label" for="swarm_negative_prompt" data-i18n="Negative prompt">Negative prompt</label>
+                <textarea id="swarm_negative_prompt" class="text_pole autoSetHeight" rows="3"
+                          placeholder="bad hands, worst quality, watermark"></textarea>
+            </div>
+
+            <!-- =============================== LoRAs ============================= -->
+            <div class="swarm-section">
+                <div class="swarm-section-title" data-i18n="LoRAs">LoRAs</div>
+
+                <div class="swarm-row">
+                    <select id="swarm_lora_select" class="text_pole swarm-grow"></select>
+                    <input id="swarm_lora_weight" class="text_pole swarm-weight" type="number"
+                           min="-10" max="10" step="0.05" value="0.8" title="LoRA weight" />
+                    <div id="swarm_lora_add" class="menu_button swarm-nowrap" title="Add this LoRA to the active list">
+                        <i class="fa-solid fa-plus"></i>
+                    </div>
+                </div>
+
+                <div id="swarm_lora_chips" class="swarm-chips"></div>
+
+                <div class="swarm-hint">
+                    <span data-i18n="Active LoRAs are appended to the prompt as &lt;lora:name:weight&gt; tags, which SwarmUI parses natively.">Active LoRAs are appended to the prompt as &lt;lora:name:weight&gt; tags, which SwarmUI parses natively.</span>
+                </div>
+            </div>
+
+            <!-- ====================== Per-character look tags ==================== -->
+            <div class="swarm-section">
+                <div class="swarm-section-title" data-i18n="Character look tags">Character look tags</div>
+
+                <div class="swarm-hint" id="swarm_look_tags_target">
+                    <span data-i18n="No character selected.">No character selected.</span>
+                </div>
+
+                <textarea id="swarm_look_tags" class="text_pole autoSetHeight" rows="3"
+                          placeholder="1girl, long black hair, brown eyes, red kimono, tall"></textarea>
+
+                <div class="swarm-hint">
+                    <span data-i18n="Appearance / face / hair / body / outfit tags for the current character. Always prepended to the prompt for face consistency. Stored per character avatar.">Appearance / face / hair / body / outfit tags for the current character. Always prepended to the prompt for face consistency. Stored per character avatar.</span>
+                </div>
+            </div>
+
+            <!-- ======================== LLM scene prompt ========================= -->
+            <div class="swarm-section">
+                <div class="swarm-section-title" data-i18n="Scene prompt source">Scene prompt source</div>
+
+                <label class="checkbox_label" for="swarm_llm_prompt">
+                    <input id="swarm_llm_prompt" type="checkbox" />
+                    <span data-i18n="Let the chat LLM write the scene prompt">Let the chat LLM write the scene prompt</span>
+                </label>
+
+                <div class="swarm-hint">
+                    <span data-i18n="When enabled (or when /swarm is used with no prompt), the chat model writes the scene description from the recent chat instead of using the raw message text.">When enabled (or when /swarm is used with no prompt), the chat model writes the scene description from the recent chat instead of using the raw message text.</span>
+                </div>
+
+                <label class="swarm-label" for="swarm_llm_instruction" data-i18n="Instruction for the LLM">Instruction for the LLM</label>
+                <textarea id="swarm_llm_instruction" class="text_pole autoSetHeight" rows="5"></textarea>
+            </div>
+
+            <div class="swarm-row swarm-row-end">
+                <div id="swarm_generate_now" class="menu_button" title="Generate an image right now from the current chat">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span data-i18n="Generate now">Generate now</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>

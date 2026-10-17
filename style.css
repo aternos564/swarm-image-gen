@@ -1,0 +1,147 @@
+/* swarm-image-gen — styling for the settings drawer, LoRA chips and message button. */
+
+.swarm-settings .swarm-section {
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--white30a, rgba(255, 255, 255, 0.15));
+}
+
+.swarm-settings .swarm-section:last-of-type {
+    border-bottom: none;
+}
+
+.swarm-settings .swarm-section-title {
+    font-weight: bold;
+    margin-bottom: 6px;
+    opacity: 0.9;
+}
+
+.swarm-settings .swarm-label {
+    display: block;
+    margin: 6px 0 2px;
+    opacity: 0.85;
+}
+
+.swarm-settings .swarm-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.swarm-settings .swarm-row-end {
+    justify-content: flex-end;
+}
+
+.swarm-settings .swarm-grow {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.swarm-settings .swarm-nowrap {
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+.swarm-settings .swarm-weight {
+    width: 68px;
+    flex: 0 0 auto;
+}
+
+.swarm-settings .swarm-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 10px;
+}
+
+.swarm-settings .swarm-status {
+    margin-top: 6px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: var(--black30a, rgba(0, 0, 0, 0.3));
+    word-break: break-word;
+    font-size: 0.9em;
+}
+
+.swarm-settings .swarm-status.swarm-ok {
+    color: var(--okGreen, #6fe06f);
+}
+
+.swarm-settings .swarm-status.swarm-error {
+    color: var(--warning, #ff8080);
+}
+
+.swarm-settings .swarm-hint {
+    margin-top: 5px;
+    opacity: 0.7;
+    font-size: 0.85em;
+    line-height: 1.3;
+}
+
+.swarm-settings .swarm-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 7px;
+    min-height: 4px;
+}
+
+.swarm-settings .swarm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: var(--white30a, rgba(255, 255, 255, 0.18));
+    font-size: 0.85em;
+    max-width: 100%;
+}
+
+.swarm-settings .swarm-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 190px;
+}
+
+.swarm-settings .swarm-chip-weight {
+    opacity: 0.75;
+}
+
+.swarm-settings .swarm-chip-remove {
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.swarm-settings .swarm-chip-remove:hover {
+    opacity: 1;
+    color: var(--warning, #ff8080);
+}
+
+.swarm-settings .swarm-chips-empty {
+    opacity: 0.6;
+    font-size: 0.85em;
+    font-style: italic;
+}
+
+/* Message button in the chat */
+.mes_button.swarm_mes_gen[data-swarm-busy="true"] {
+    animation: swarm-pulse 1.1s ease-in-out infinite;
+    color: var(--warning, #ffb060);
+}
+
+@keyframes swarm-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.35;
+    }
+}
+
+/* Busy overlay badge inside the settings panel */
+#swarm_generate_now[data-swarm-busy="true"] {
+    opacity: 0.55;
+    pointer-events: none;
+}
