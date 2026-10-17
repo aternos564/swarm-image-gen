@@ -8,8 +8,10 @@ extension, with the two things that one lacks:
   you can stack as many as you want with individual weights. Active LoRAs stay authoritative: the chips are
   always appended to the prompt, whatever the prompt itself says, and SwarmUI's own warnings (a LoRA name it
   does not know) are shown as a toast instead of being swallowed.
-* **per-character look tags** — a fixed list of appearance/face/hair/outfit tags per character, always
-  prepended to every prompt, so the character keeps her face and clothes between images,
+* **per-character look tags** — a fixed list of appearance (face/hair/body) tags per character, plus two dedicated
+  **outfit** boxes (one per character, one for your persona). The appearance tags are always prepended to every
+  prompt, and the outfit tags are written into every picture, so the character keeps her face *and* wears the same
+  outfit between generations instead of drifting image to image,
 * **one obvious image button** — an entry in SillyTavern's own wand menu (the one with *Attach a File*), plus a
   wand button under every message. SillyTavern's built-in image button keeps working next to them; a checkbox in
   the panel hides it if you would rather see only SwarmUI's button.
@@ -85,21 +87,29 @@ Option A works exactly the same from the phone's browser. Two things to remember
    `<lora:name:weight>` tag is appended to every prompt. Active LoRAs are ticked with `✓` in the dropdown.
    Typing in the weight box updates the chip live; click the `✕` on a chip to remove it. (`+ Add` just
    re-applies the current weight, and you can stack several LoRAs.)
-7. **Character look tags** — with a character open, fill in e.g.
-   `1girl, long black hair, brown eyes, red kimono, tall`. Saved on the character card itself
-   (`data.extensions.swarm_look_tags`) and always prepended to prompts for that character.
-   In group chats the tags of the character who wrote the message are used automatically.
-8. *(optional)* Tick **Let the chat LLM write the scene prompt** and edit the instruction to taste.
-9. *(optional)* Use the **caret** on the right of *Generate Image (SwarmUI)* in the wand menu (or `/swarm you`,
-   `/swarm face`, …) to generate a picture of something specific instead of the current scene. Clicking the entry
-   itself keeps generating from the current chat.
+7. **Appearance tags** — with a character open, fill in e.g. `1girl, long black hair, brown eyes, tall` (face, hair,
+   body, skin — no clothing). Saved on the character card itself (`data.extensions.swarm_look_tags`) and always
+   prepended to prompts for that character.
+8. **Character outfit** — clothing tags for that character, e.g. `red kimono, black obi, sandals`. Added to every
+   picture of her (except *Me* and *Background*) so she wears the same outfit every time. Saved on the card too
+   (`data.extensions.swarm_outfit`). If the model still drifts, give the tags weight: `(red kimono:1.15)`.
+9. **Your outfit** — clothing tags for your persona, e.g. `white shirt, black jeans`. Added to pictures that show
+   you (*Me*, *The Whole Story*, *The Last Message*, free prompts), skipped for *Yourself*, *Your Face* and
+   *Background*. Stored per persona in the extension settings.
+   In group chats the character tags of whoever wrote the message are used automatically.
+10. *(optional)* Tick **Let the chat LLM write the scene prompt** and edit the instruction to taste. If your
+    instruction asks for clothing, the scene's clothes fight the outfit boxes — leaving clothing out of the
+    instruction keeps the outfit stable.
+11. *(optional)* Use the **caret** on the right of *Generate Image (SwarmUI)* in the wand menu (or `/swarm you`,
+    `/swarm face`, …) to generate a picture of something specific instead of the current scene. Clicking the entry
+    itself keeps generating from the current chat.
 
 ## Usage
 
 | Trigger | What it does |
 | --- | --- |
 | **Generate Image (SwarmUI)** in the wand menu next to the chat box | Generates from the current chat: the last message, or an LLM-written scene when that option is on. |
-| Caret `›` on the right of that entry | Opens the built-in *"Send me a picture of:"* list: **Yourself** (portrait of the character), **Your Face** (close-up portrait), **Me** (your persona), **The Whole Story** (recap, appearance and surroundings), **The Last Message** (the chat model turns the last message into tags), **Raw Last Message** (the message as written, plus the character's scenario and description with weights), **Background** (surroundings, and the picture is also set as the chat background). "Me" and "Background" never get the character's look tags. |
+| Caret `›` on the right of that entry | Opens the built-in *"Send me a picture of:"* list: **Yourself** (portrait of the character), **Your Face** (close-up portrait), **Me** (your persona), **The Whole Story** (recap, appearance and surroundings), **The Last Message** (the chat model turns the last message into tags), **Raw Last Message** (the message as written, plus the character's scenario and description with weights), **Background** (surroundings, and the picture is also set as the chat background). *Me* and *Background* never get the character's appearance/outfit tags; *Yourself*, *Your Face* and *Background* never get your outfit. |
 | Blue wand button in a message's extra buttons | Generates an image for that message. With the LLM option on, the model rewrites the scene into image tags; otherwise the message text is used. |
 | `/swarm a girl on a throne` | Uses the given text as the scene prompt. |
 | `/swarm` (no text) | Always asks the chat model to write the scene prompt. |
@@ -107,7 +117,7 @@ Option A works exactly the same from the phone's browser. Two things to remember
 | **Generate now** button in the panel | Same as `/swarm` with no text. |
 | `send me a picture of a cat` in chat (*Use interactive mode* on) | Generates automatically, using the detected subject as the scene. |
 | Chat model calling the `GenerateImageSwarmUI` function tool (*Use function tool* on) | Tool-capable models request the image themselves during the scene. |
-| *Edit prompts before generation* on | Every trigger above first opens a popup with **only the chat prompt** — no look tags, no prefix/suffix tags, no LoRA tags, no negative prompt — so it can be corrected or the generation cancelled. Everything else is added to the prompt afterwards, exactly as configured in the panel. |
+| *Edit prompts before generation* on | Every trigger above first opens a popup with **only the chat prompt** — no appearance/outfit tags, no prefix/suffix tags, no LoRA tags, no negative prompt — so it can be corrected or the generation cancelled. Everything else is added to the prompt afterwards, exactly as configured in the panel. |
 | *Ask: new prompt or old prompt* on | The wand menu entry, the message button and **Generate now** first ask **New prompt** (the prompt is written again — the chat model is asked when *Let the chat LLM write the scene prompt* is on, which uses tokens) or **Old prompt, new image** (the chat prompt of the last image is reused and a new picture is made without asking the model, so it costs no tokens). The question only appears once a previous prompt exists. |
 
 Optional arguments: `/swarm quiet=true width=832 height=1216 steps=30 cfg=5 seed=1234 model=... sampler=... scheduler=... vae=... images=1`
@@ -172,10 +182,11 @@ This must be enabled again after a config reset, and it is off by default.
 | *"Model 'X' is not on server"* | The saved checkpoint no longer exists on the SwarmUI side. Pick another one and press Connect. |
 | LoRA has no effect | First check the **Active LoRAs** list under the LoRA row — the LoRA you pick in the dropdown is activated immediately and ticked with `✓` there. If the chip is there but the image ignores the LoRA, SwarmUI now says so in a toast (e.g. *"Lora 'x' does not exist and will be ignored"*) — that means the name is not in SwarmUI's list. Also check the LoRA's base model matches the checkpoint (SD1.5 LoRAs do nothing on an SDXL/Pony/Illustrious checkpoint). The weight lives in the chip — `0.8` is a sane start, `1.0+` is often too strong, and `0` disables the LoRA. |
 | *"Invalid value for parameter VAE"* | You are sending a VAE name SwarmUI does not have. Set VAE back to *Automatic*, or pick a real VAE file from the dropdown. |
-| The character's face keeps changing | Uncheck nothing — instead check the **look tags** are filled in for *that* character, and that the prompt is not dominated by scene tags. Also the seed: `-1` gives a new face every time. Fix a seed to compare. |
+| The character's face keeps changing | Check that the **Appearance** box is filled in for *that* character (face/hair/eyes), and that the prompt is not dominated by scene tags. Also the seed: `-1` gives a new face every time. Fix a seed to compare. |
+| The outfit changes a little between images | The scene prompt is fighting the outfit tags. Put the clothes into **Character outfit** (not into Appearance), remove clothing from your *Let the chat LLM write the scene prompt* instruction, and give the tags weight like `(red kimono:1.15)`. A fixed seed helps comparing. |
 | Image is posted but shows as a broken picture | The file was saved but the chat message points elsewhere. Reload and check `data/<user>/user/images/`. |
 | Nothing happens when I click the wand button | Open the browser console (F12) and look for `[swarm]` lines. If the button is missing entirely, the extension did not load — reload the page. If you clicked the *paintbrush* button, that was SillyTavern's built-in image extension, not this one. Clicking the very right edge of the entry (the `›` caret) opens the source list instead of generating. |
-| The *Edit prompts before generation* popup is empty | No chat prompt could be built (empty chat or empty message). Type what you want into the box — the look, prefix/suffix and LoRA tags and the negative prompt are added to whatever is in there when you press Continue. |
+| The *Edit prompts before generation* popup is empty | No chat prompt could be built (empty chat or empty message). Type what you want into the box — the appearance, outfit, prefix/suffix and LoRA tags and the negative prompt are added to whatever is in there when you press Continue. |
 | Two generations at once | Not possible by design; the second one is refused with a toast. |
 
 Console logging: everything is prefixed with `[swarm]`, including the exact request that was sent
@@ -196,4 +207,4 @@ Console logging: everything is prefixed with `[swarm]`, including the exact requ
   A1111-compatible `/sdapi/v1/` paths, so pointing the built-in panel at it is not an option either.
 * Prompts are cleaned up before being sent (newlines/quotes/markdown removed, extra commas collapsed,
   `<think>` blocks dropped). Non-Latin characters are stripped, because CLIP cannot read them anyway.
-* Look tags, prefix/suffix tags and the negative prompt support SillyTavern macros (`{{char}}`, `{{user}}`, …).
+* Appearance/outfit tags, prefix/suffix tags and the negative prompt support SillyTavern macros (`{{char}}`, `{{user}}`, …).

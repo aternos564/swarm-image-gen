@@ -126,19 +126,41 @@
                 </div>
             </div>
 
-            <!-- ====================== Per-character look tags ==================== -->
+            <!-- ================== Appearance and outfit tags ==================== -->
             <div class="swarm-section">
-                <div class="swarm-section-title" data-i18n="Character look tags">Character look tags</div>
+                <div class="swarm-section-title" data-i18n="Appearance and outfits">Appearance and outfits</div>
 
                 <div class="swarm-hint" id="swarm_look_tags_target">
                     <span data-i18n="No character selected.">No character selected.</span>
                 </div>
 
-                <textarea id="swarm_look_tags" class="text_pole autoSetHeight" rows="3"
-                          placeholder="1girl, long black hair, brown eyes, red kimono, tall"></textarea>
+                <textarea id="swarm_look_tags" class="text_pole autoSetHeight" rows="2"
+                          placeholder="1girl, long black hair, brown eyes, tall"></textarea>
 
                 <div class="swarm-hint">
-                    <span data-i18n="Appearance / face / hair / body / outfit tags for the current character. Always prepended to the prompt for face consistency. Stored per character avatar.">Appearance / face / hair / body / outfit tags for the current character. Always prepended to the prompt for face consistency. Stored per character avatar.</span>
+                    <span data-i18n="Appearance tags for the current character: face, hair, body, skin. Prepended to every image of her. No clothing here — that goes into the outfit boxes below. Stored per character avatar.">Appearance tags for the current character: face, hair, body, skin. Prepended to every image of her. No clothing here — that goes into the outfit boxes below. Stored per character avatar.</span>
+                </div>
+
+                <div class="swarm-hint" id="swarm_outfit_tags_target">
+                    <span data-i18n="No character selected.">No character selected.</span>
+                </div>
+
+                <textarea id="swarm_outfit_tags" class="text_pole autoSetHeight" rows="2"
+                          placeholder="red kimono, black obi, sandals"></textarea>
+
+                <div class="swarm-hint">
+                    <span data-i18n="Clothing tags for the current character. Added to every image of her (except Me and Background), so she wears the same outfit every time. If the model still changes it, give the tags weight: (red kimono:1.15). Stored per character avatar.">Clothing tags for the current character. Added to every image of her (except Me and Background), so she wears the same outfit every time. If the model still changes it, give the tags weight: (red kimono:1.15). Stored per character avatar.</span>
+                </div>
+
+                <div class="swarm-hint" id="swarm_user_outfit_target">
+                    <span data-i18n="Your outfit: you">Your outfit: you</span>
+                </div>
+
+                <textarea id="swarm_user_outfit" class="text_pole autoSetHeight" rows="2"
+                          placeholder="white shirt, black pants"></textarea>
+
+                <div class="swarm-hint">
+                    <span data-i18n="Clothing tags for your persona. Added to images that show you (Me, The Whole Story, The Last Message, free prompts), skipped for Yourself, Your Face and Background. Stored per persona.">Clothing tags for your persona. Added to images that show you (Me, The Whole Story, The Last Message, free prompts), skipped for Yourself, Your Face and Background. Stored per persona.</span>
                 </div>
             </div>
 
@@ -168,13 +190,13 @@
                 <div class="swarm-section-title" data-i18n="Generation modes">Generation modes</div>
 
                 <label for="swarm_edit_before_generation" class="checkbox_label"
-                       title="Show the chat prompt in a popup before generating, so it can be corrected or the generation cancelled. Your look tags, prefix/suffix tags, LoRA tags and negative prompt are added after the popup.">
+                       title="Show the chat prompt in a popup before generating, so it can be corrected or the generation cancelled. Your appearance/outfit tags, prefix/suffix tags, LoRA tags and negative prompt are added after the popup.">
                     <input type="checkbox" id="swarm_edit_before_generation" />
                     <span data-i18n="Edit prompts before generation">Edit prompts before generation</span>
                 </label>
 
                 <div class="swarm-hint">
-                    <span data-i18n="The popup shows only the chat prompt (the part taken from the chat, or the prompt you typed after /swarm). The look tags, prefix/suffix tags, LoRA tags and the negative prompt are added automatically when you press Continue.">The popup shows only the chat prompt (the part taken from the chat, or the prompt you typed after /swarm). The look tags, prefix/suffix tags, LoRA tags and the negative prompt are added automatically when you press Continue.</span>
+                    <span data-i18n="The popup shows only the chat prompt (the part taken from the chat, or the prompt you typed after /swarm). The appearance/outfit tags, prefix/suffix tags, LoRA tags and the negative prompt are added automatically when you press Continue.">The popup shows only the chat prompt (the part taken from the chat, or the prompt you typed after /swarm). The appearance/outfit tags, prefix/suffix tags, LoRA tags and the negative prompt are added automatically when you press Continue.</span>
                 </div>
 
                 <label for="swarm_ask_prompt_choice" class="checkbox_label"

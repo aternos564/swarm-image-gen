@@ -21,8 +21,14 @@ import { saveBase64AsFile } from '../../../utils.js';
 
 /** Key inside extension_settings. Never rename this without a migration. */
 const EXTENSION_KEY = 'swarm_image_gen';
-/** Key used to store per-character look tags on the character card. */
+/**
+ * Key used to store the per-character appearance tags on the character card. The name is
+ * kept from the old "look tags" box so existing values survive; clothing belongs in
+ * OUTFIT_TAGS_KEY now.
+ */
 const LOOK_TAGS_KEY = 'swarm_look_tags';
+/** Key used to store the per-character outfit tags on the character card. */
+const OUTFIT_TAGS_KEY = 'swarm_outfit';
 /** Prefix for all console output. */
 const LOG = '[swarm]';
 const DEFAULT_BASE_URL = 'http://127.0.0.1:7801';
@@ -31,7 +37,7 @@ const SYSTEM_USER_NAME = 'SillyTavern System';
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const GENERATION_TIMEOUT_MS = 15 * 60 * 1000;
-const LOOK_TAGS_SAVE_DELAY_MS = 600;
+const TAGS_SAVE_DELAY_MS = 600;
 const SCROLL_DELAY_MS = 200;
 
 /** Media enum values (scripts/constants.js). */
@@ -104,8 +110,10 @@ const SOURCE_INSTRUCTIONS = {
     background: 'Ignore previous instructions and provide a detailed description of {{char}}\'s surroundings in the form of a comma-delimited list of keywords and phrases. The list must include all of the following items in this order: location, time of day, weather, lighting, and any other relevant details. Do not include descriptions of characters and non-visual qualities such as names, personality, movements, scents, mental traits, or anything which could not be seen in a still photograph. Do not write in full sentences. Prefix your description with the phrase \'background,\'. Ignore the rest of the story when crafting this description. Do not reply as {{char}} when writing this description, and do not attempt to continue the story.',
 };
 
-/** Sources that must not get the character's look tags - "Me" and "Background" are not the character. */
-const SOURCES_WITHOUT_LOOK_TAGS = new Set(['me', 'background']);
+/** Sources that never show the character, so her appearance and outfit tags are left out. */
+const SOURCES_WITHOUT_CHARACTER_TAGS = new Set(['me', 'background']);
+/** Sources that never show the user, so the persona's outfit tags are left out. */
+const SOURCES_WITHOUT_USER_TAGS = new Set(['you', 'face', 'background']);
 
 const defaultSettings = {
     base_url: DEFAULT_BASE_URL,
@@ -132,8 +140,10 @@ const defaultSettings = {
     loras: [],
     /** Weight pre-filled in the "add LoRA" box. */
     lora_weight: 0.8,
-    /** Include per-character look tags in the prompt. */
+    /** Include per-character appearance tags in the prompt. */
     use_look_tags: true,
+    /** Outfit tags per persona avatar, so "Your outfit" can differ per persona. */
+    user_outfits: {},
     /** Optional: hide SillyTavern's built-in image buttons so only this extension's button remains. */
     hide_builtin_buttons: false,
     /** Show an editable popup with the finished prompt right before the request is sent. */
@@ -834,7 +844,7 @@ function renderAllControls() {
     }
 
     renderLoraChips();
-    updateLookTagsUi();
+    updateCharacterTagsUi();
 }
 
 /** SwarmUI resolves LoRAs by name, so the file extension is stripped from the tag. */
@@ -969,12 +979,14 @@ function addLoraFromUi() {
 }
 
 /* ------------------------------------------------------------------ *
- * Per-character look tags
+ * Per-character appearance and outfit tags, and the user's outfit
  * ------------------------------------------------------------------ */
 
-/** @type {Map<string, string>} avatar -> tags, avoids repeated server reads */
-const lookTagsCache = new Map();
-let lookTagsSaveTimer = null;
+/** @type {Map<string, string>} "key:avatar" -> tags, avoids repeated server reads */
+const characterTagsCache = new Map();
+/** @type {Map<string, ReturnType<typeof setTimeout>>} "key:avatar" -> pending save timer */
+const characterTagsSaveTimers = new Map();
+let userOutfitSaveTimer = null;
 
 /**
  * @param {{characterId?: number|string, avatar?: string}} [target]
@@ -993,51 +1005,102 @@ function resolveCharacter(target = {}) {
     return { avatar: context.characters[id].avatar ?? null, character: context.characters[id] };
 }
 
-/** @returns {string} Look tags for an avatar, from cache or the character card. */
-function readLookTags(avatar) {
+/** @returns {string} Cache key for one tag box of one avatar. */
+function characterTagsCacheKey(avatar, key) {
+    return `${key}:${avatar}`;
+}
+
+/**
+ * @param {string} avatar Character avatar
+ * @param {string} key LOOK_TAGS_KEY or OUTFIT_TAGS_KEY
+ * @returns {string} Tags, from cache or the character card
+ */
+function readCharacterTags(avatar, key) {
     if (!avatar) {
         return '';
     }
-    if (lookTagsCache.has(avatar)) {
-        return lookTagsCache.get(avatar);
+    const cacheKey = characterTagsCacheKey(avatar, key);
+    if (characterTagsCache.has(cacheKey)) {
+        return characterTagsCache.get(cacheKey);
     }
     const character = ctx().characters?.find((c) => c?.avatar === avatar);
-    const raw = character?.data?.extensions?.[LOOK_TAGS_KEY];
+    const raw = character?.data?.extensions?.[key];
     const value = typeof raw === 'string' ? raw : '';
-    lookTagsCache.set(avatar, value);
+    characterTagsCache.set(cacheKey, value);
     return value;
 }
 
-/** Persists look tags on the character card. */
-async function writeLookTags(avatar, value) {
+/** Persists appearance/outfit tags on the character card. */
+async function writeCharacterTags(avatar, key, value) {
     const context = ctx();
     const index = context.characters?.findIndex((c) => c?.avatar === avatar) ?? -1;
     if (index < 0) {
-        warn('Cannot save look tags: character not found for avatar', avatar);
+        warn('Cannot save the character tags: character not found for avatar', avatar);
         return;
     }
-    lookTagsCache.set(avatar, value);
+    characterTagsCache.set(characterTagsCacheKey(avatar, key), value);
     try {
-        await context.writeExtensionField(index, LOOK_TAGS_KEY, value);
+        await context.writeExtensionField(index, key, value);
     } catch (error) {
-        logError('Failed to save look tags.', error);
-        toastrSafe('error', 'Could not save the character look tags.');
+        logError('Failed to save the character tags.', error);
+        toastrSafe('error', 'Could not save the character tags.');
     }
 }
 
-function queueLookTagsSave(avatar, value) {
-    lookTagsCache.set(avatar, value);
-    if (lookTagsSaveTimer) {
-        clearTimeout(lookTagsSaveTimer);
+/** Debounced save so typing does not hammer the character card. */
+function queueCharacterTagsSave(avatar, key, value) {
+    const cacheKey = characterTagsCacheKey(avatar, key);
+    characterTagsCache.set(cacheKey, value);
+    const timer = characterTagsSaveTimers.get(cacheKey);
+    if (timer) {
+        clearTimeout(timer);
     }
-    lookTagsSaveTimer = setTimeout(() => {
-        lookTagsSaveTimer = null;
-        writeLookTags(avatar, value);
-    }, LOOK_TAGS_SAVE_DELAY_MS);
+    characterTagsSaveTimers.set(cacheKey, setTimeout(() => {
+        characterTagsSaveTimers.delete(cacheKey);
+        writeCharacterTags(avatar, key, value);
+    }, TAGS_SAVE_DELAY_MS));
 }
 
-/** Currently displayed character in the look tags box. */
-function currentLookTagsAvatar() {
+/** @returns {string} Appearance tags of the character ("1girl, long black hair, ..."). */
+function readAppearanceTags(avatar) {
+    return readCharacterTags(avatar, LOOK_TAGS_KEY);
+}
+
+/** @returns {string} Outfit tags of the character ("red kimono, black obi"). */
+function readOutfitTags(avatar) {
+    return readCharacterTags(avatar, OUTFIT_TAGS_KEY);
+}
+
+/** @returns {string} The key the user's outfit is stored under - the current persona. */
+function userOutfitKey() {
+    const context = ctx();
+    return String(context.user_avatar || context.name1 || 'default');
+}
+
+/** @returns {string} Outfit tags of the current persona. */
+function readUserOutfit() {
+    const stored = getSettings().user_outfits?.[userOutfitKey()];
+    return typeof stored === 'string' ? stored : '';
+}
+
+/** Stores the persona's outfit in the extension settings (debounced). */
+function queueUserOutfitSave(value) {
+    const settings = getSettings();
+    if (!settings.user_outfits || typeof settings.user_outfits !== 'object') {
+        settings.user_outfits = {};
+    }
+    settings.user_outfits[userOutfitKey()] = value;
+    if (userOutfitSaveTimer) {
+        clearTimeout(userOutfitSaveTimer);
+    }
+    userOutfitSaveTimer = setTimeout(() => {
+        userOutfitSaveTimer = null;
+        saveSettings();
+    }, TAGS_SAVE_DELAY_MS);
+}
+
+/** Currently displayed character in the appearance/outfit boxes. */
+function currentCharacterTagsAvatar() {
     const context = ctx();
     if (context.groupId) {
         return null;
@@ -1045,30 +1108,50 @@ function currentLookTagsAvatar() {
     return resolveCharacter().avatar;
 }
 
-function updateLookTagsUi() {
-    const $target = $('#swarm_look_tags_target');
-    const $input = $('#swarm_look_tags');
-    if (!$target.length || !$input.length) {
-        return;
-    }
-
+/** Repaints the appearance, outfit and persona outfit boxes. */
+function updateCharacterTagsUi() {
     const context = ctx();
-    if (context.groupId) {
-        $target.text('Group chat: look tags are taken from the character that wrote the message.');
-        $input.val('').prop('disabled', true);
-        return;
-    }
-
+    const group = !!context.groupId;
     const { avatar, character } = resolveCharacter();
-    if (!avatar || !character) {
-        $target.text('No character selected.');
-        $input.val('').prop('disabled', true);
-        return;
-    }
+    const name = character?.name ?? avatar ?? '';
 
-    $target.text(`Editing look tags for: ${character.name ?? avatar}`);
-    $input.prop('disabled', false);
-    $input.val(readLookTags(avatar));
+    /**
+     * @param {string} targetId Hint element that names the character
+     * @param {string} inputId Textarea of the box
+     * @param {string} label What the box holds ("Appearance", "Outfit", ...)
+     * @param {string} value Current tags
+     */
+    const setCharacterBox = (targetId, inputId, label, value) => {
+        const $target = $(targetId);
+        const $input = $(inputId);
+        if (!$target.length || !$input.length) {
+            return;
+        }
+        if (group) {
+            $target.text(`Group chat: ${label.toLowerCase()} tags are taken from the character that wrote the message.`);
+            $input.val('').prop('disabled', true);
+            return;
+        }
+        if (!avatar) {
+            $target.text('No character selected.');
+            $input.val('').prop('disabled', true);
+            return;
+        }
+        $target.text(`Editing ${label.toLowerCase()} for: ${name}`);
+        $input.prop('disabled', false);
+        $input.val(value);
+    };
+
+    setCharacterBox('#swarm_look_tags_target', '#swarm_look_tags', 'Appearance', avatar ? readAppearanceTags(avatar) : '');
+    setCharacterBox('#swarm_outfit_tags_target', '#swarm_outfit_tags', 'Outfit', avatar ? readOutfitTags(avatar) : '');
+
+    const $userTarget = $('#swarm_user_outfit_target');
+    const $userInput = $('#swarm_user_outfit');
+    if ($userTarget.length && $userInput.length) {
+        $userTarget.text(`Your outfit: ${context.name1 ?? 'you'}`);
+        $userInput.prop('disabled', false);
+        $userInput.val(readUserOutfit());
+    }
 }
 
 /* ------------------------------------------------------------------ *
@@ -1077,12 +1160,14 @@ function updateLookTagsUi() {
 
 /**
  * Assembles the final SwarmUI prompt.
- * @param {{scene: string, lookTags?: string, settings?: any}} options
+ * @param {{scene: string, appearanceTags?: string, characterOutfit?: string, userOutfit?: string, settings?: any}} options
  * @returns {string}
  */
-function buildPrompt({ scene, lookTags = '', settings = getSettings() }) {
+function buildPrompt({ scene, appearanceTags = '', characterOutfit = '', userOutfit = '', settings = getSettings() }) {
     const parts = [
-        substituteSafe(lookTags),
+        substituteSafe(appearanceTags),
+        substituteSafe(characterOutfit),
+        substituteSafe(userOutfit),
         substituteSafe(settings.prefix_tags),
         scene,
         substituteSafe(settings.suffix_tags),
@@ -1203,8 +1288,8 @@ async function writeScenePrompt(instruction = '') {
 
 /**
  * "Edit prompts before generation": shows the chat prompt - the text taken from the chat
- * (or typed by hand), without the look tags, prefix tags, suffix tags, LoRA tags and the
- * negative prompt - so it can be corrected, or the generation cancelled, before anything
+ * (or typed by hand), without the appearance/outfit tags, prefix tags, suffix tags, LoRA
+ * tags and the negative prompt - so it can be corrected, or the generation cancelled, before anything
  * reaches SwarmUI. Everything else is added afterwards, exactly as configured in the panel.
  * @param {string} sceneText The chat prompt to review
  * @returns {Promise<string>} The edited chat prompt
@@ -1225,7 +1310,7 @@ async function reviewSceneBeforeSending(sceneText) {
 
     const edited = await popupShow.input(
         'Review and edit the prompt:',
-        'Press "Cancel" to abort the image generation.<br><small>Only the chat prompt is shown here — your look tags, prefix/suffix tags, LoRA tags and the negative prompt are added automatically.</small>',
+        'Press "Cancel" to abort the image generation.<br><small>Only the chat prompt is shown here — your appearance, outfit, prefix/suffix and LoRA tags and the negative prompt are added automatically.</small>',
         String(sceneText ?? '').trim(),
         {
             rows: 8,
@@ -1355,12 +1440,16 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
             throw new Error('No prompt text available. Send a chat message, or use /swarm <prompt>.');
         }
 
-        // 2. Look tags for the right character ("Me" and "Background" are not the character)
-        const skipLookTags = SOURCES_WITHOUT_LOOK_TAGS.has(source);
+        // 2. Appearance and outfit tags. "Me" and "Background" are not the character, so her
+        //    tags stay out; "Yourself" and "Your Face" never show the user, so their outfit does.
+        const showCharacter = !SOURCES_WITHOUT_CHARACTER_TAGS.has(source);
+        const showUser = !SOURCES_WITHOUT_USER_TAGS.has(source);
         const avatar = targetAvatar ?? lastMessageCharacter().avatar;
-        const lookTags = settings.use_look_tags && !skipLookTags && avatar ? readLookTags(avatar) : '';
-        if (sceneText && settings.use_look_tags && !skipLookTags && !avatar) {
-            log('No character resolved for look tags; generating without them.');
+        const appearanceTags = settings.use_look_tags && showCharacter && avatar ? readAppearanceTags(avatar) : '';
+        const characterOutfit = showCharacter && avatar ? readOutfitTags(avatar) : '';
+        const userOutfit = showUser ? readUserOutfit() : '';
+        if (sceneText && settings.use_look_tags && showCharacter && !avatar) {
+            log('No character resolved for the appearance tags; generating without them.');
         }
 
         // 3. Optional: show only the chat prompt and let it be corrected before sending.
@@ -1376,7 +1465,7 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
         // 4. Parameters. Prefix, suffix, look and LoRA tags are added here - after the
         //    review - so the popup only ever shows the chat prompt itself.
         const params = {
-            prompt: buildPrompt({ scene, lookTags, settings }),
+            prompt: buildPrompt({ scene, appearanceTags, characterOutfit, userOutfit, settings }),
             negativeprompt: buildNegativePrompt(),
             model: settings.model,
             sampler: overrides.sampler ?? settings.sampler,
@@ -1861,7 +1950,7 @@ function registerSlashCommand() {
                 SillyTavern's built-in image menu.
             </div>
             <div>
-                Active SwarmUI LoRAs, prefix/suffix tags and the current character's look tags are always applied.
+                Active SwarmUI LoRAs, prefix/suffix tags, the current character's appearance/outfit tags and your own outfit are always applied.
             </div>
         `,
     }));
@@ -1993,11 +2082,24 @@ function bindSettingsEvents() {
 
     const $lookTags = $('#swarm_look_tags');
     $lookTags.on('input', () => {
-        const avatar = currentLookTagsAvatar();
+        const avatar = currentCharacterTagsAvatar();
         if (!avatar) {
             return;
         }
-        queueLookTagsSave(avatar, String($lookTags.val() ?? ''));
+        queueCharacterTagsSave(avatar, LOOK_TAGS_KEY, String($lookTags.val() ?? ''));
+    });
+
+    const $outfitTags = $('#swarm_outfit_tags');
+    $outfitTags.on('input', () => {
+        const avatar = currentCharacterTagsAvatar();
+        if (!avatar) {
+            return;
+        }
+        queueCharacterTagsSave(avatar, OUTFIT_TAGS_KEY, String($outfitTags.val() ?? ''));
+    });
+
+    $('#swarm_user_outfit').on('input', () => {
+        queueUserOutfitSave(String($('#swarm_user_outfit').val() ?? ''));
     });
 
     $('#swarm_generate_now').on('click', async () => {
@@ -2134,16 +2236,23 @@ function bindChatEvents() {
     source.on(events.CHARACTER_MESSAGE_RENDERED, (messageId) => ensureMessageButton(messageId));
     source.on(events.USER_MESSAGE_RENDERED, (messageId) => ensureMessageButton(messageId));
     source.on(events.CHAT_CHANGED, () => {
-        updateLookTagsUi();
+        updateCharacterTagsUi();
         setTimeout(injectMessageButtons, 50);
     });
     source.on(events.MESSAGE_DELETED, () => setTimeout(injectMessageButtons, 50));
     source.on(events.MORE_MESSAGES_LOADED, () => setTimeout(injectMessageButtons, 50));
     source.on(events.MESSAGE_SENT, () => onMessageSentForInteractiveMode());
     source.on(events.CHARACTER_EDITED, () => {
-        lookTagsCache.clear();
-        updateLookTagsUi();
+        characterTagsCache.clear();
+        updateCharacterTagsUi();
     });
+    // Switching character or persona changes whose tags the boxes edit.
+    if (events.CHARACTER_SELECTED) {
+        source.on(events.CHARACTER_SELECTED, () => updateCharacterTagsUi());
+    }
+    if (events.PERSONA_CHANGED) {
+        source.on(events.PERSONA_CHANGED, () => updateCharacterTagsUi());
+    }
 }
 
 /** Guards against adding the wand-menu entry twice (SillyTavern activates once per page load). */
