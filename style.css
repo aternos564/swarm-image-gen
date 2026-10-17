@@ -125,6 +125,15 @@
 }
 
 /* Message button in the chat */
+.mes_button.swarm_mes_gen {
+    /* Accent colour so it is never mixed up with SillyTavern's built-in image buttons. */
+    color: var(--swarm-accent, #4db8ff);
+}
+
+.mes_button.swarm_mes_gen:hover {
+    color: var(--swarm-accent-hover, #8ad2ff);
+}
+
 .mes_button.swarm_mes_gen[data-swarm-busy="true"] {
     animation: swarm-pulse 1.1s ease-in-out infinite;
     color: var(--warning, #ffb060);

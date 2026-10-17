@@ -1137,7 +1137,10 @@ function updateBusyUi(isBusy) {
  * ------------------------------------------------------------------ */
 
 const MESSAGE_BUTTON_CLASS = 'swarm_mes_gen';
-const MESSAGE_BUTTON_HTML = `<div title="Generate an image for this message (SwarmUI)" class="mes_button ${MESSAGE_BUTTON_CLASS} fa-solid fa-image" data-i18n="[title]Generate an image for this message (SwarmUI)"></div>`;
+// The wand icon is also used by this extension's own "Generate now" button, and it is
+// deliberately different from the paintbrush of SillyTavern's built-in image extension,
+// so the two buttons in a message's action row can never be confused with each other.
+const MESSAGE_BUTTON_HTML = `<div title="Generate an image for this message (SwarmUI)" class="mes_button ${MESSAGE_BUTTON_CLASS} fa-solid fa-wand-magic-sparkles" data-i18n="[title]Generate an image for this message (SwarmUI)"></div>`;
 
 /** Adds the per-message button to the message template and to rendered messages. */
 function injectMessageButtons() {
