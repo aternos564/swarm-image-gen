@@ -1483,7 +1483,15 @@ function installWandMenuEntry() {
         return; // SillyTavern moved its menu: skip silently instead of breaking the page.
     }
     wandMenuInstalled = true;
-    $menu.append(WAND_MENU_ITEM_HTML);
+
+    // Sit exactly where the built-in "Generate Image" entry sits (third item, after
+    // "Attach a File") instead of at the bottom of the menu.
+    const $builtinSlot = $('#sd_wand_container');
+    if ($builtinSlot.length) {
+        $builtinSlot.after(WAND_MENU_ITEM_HTML);
+    } else {
+        $menu.append(WAND_MENU_ITEM_HTML);
+    }
 }
 
 /**
