@@ -447,6 +447,12 @@ let sessionId = null;
 let resolvedTransport = null;
 /** True while an image is being generated. */
 let busy = false;
+let genTimerInterval = null;
+let genTimerStart = 0;
+let genTimerEl = null;
+let genTimerInterval = null;
+let genTimerStart = 0;
+let genTimerEl = null;
 
 /** @returns {string[]} Transports to try, in order. */
 function transportCandidates(override) {
@@ -1497,6 +1503,8 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
     const settings = getSettings();
     busy = true;
     updateBusyUi(true);
+    startGenTimer();
+    startGenTimer();
 
     try {
         if (!settings.model && settings.resources.models.length === 0) {
@@ -1627,6 +1635,7 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
         toastrSafe('error', String(error?.message ?? error).split('\n')[0]);
         return '';
     } finally {
+        stopGenTimer();
         busy = false;
         updateBusyUi(false);
     }
@@ -1739,6 +1748,58 @@ async function postImageToChat({ imageUrl, prompt, negative, width, height, seco
 function updateBusyUi(isBusy) {
     $('.swarm_mes_gen').attr('data-swarm-busy', isBusy ? 'true' : 'false');
     $('#swarm_generate_now').attr('data-swarm-busy', isBusy ? 'true' : 'false');
+}
+
+function startGenTimer() {
+    stopGenTimer();
+    genTimerStart = performance.now();
+    genTimerEl = document.createElement('div');
+    genTimerEl.id = 'swarm_gen_timer';
+    genTimerEl.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:99999;padding:8px 12px;border-radius:8px;background:rgba(0,0,0,.75);color:#fff;font-size:13px;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4);';
+    genTimerEl.textContent = 'Generating\u2026 0.0s';
+    document.body.appendChild(genTimerEl);
+    genTimerInterval = setInterval(() => {
+        if (!genTimerEl) return;
+        const elapsed = ((performance.now() - genTimerStart) / 1000).toFixed(1);
+        genTimerEl.textContent = `Generating\u2026 ${elapsed}s`;
+    }, 200);
+}
+
+function stopGenTimer() {
+    if (genTimerInterval) {
+        clearInterval(genTimerInterval);
+        genTimerInterval = null;
+    }
+    if (genTimerEl && genTimerEl.parentNode) {
+        genTimerEl.parentNode.removeChild(genTimerEl);
+    }
+    genTimerEl = null;
+}
+
+function startGenTimer() {
+    stopGenTimer();
+    genTimerStart = performance.now();
+    genTimerEl = document.createElement('div');
+    genTimerEl.id = 'swarm_gen_timer';
+    genTimerEl.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:99999;padding:8px 12px;border-radius:8px;background:rgba(0,0,0,.75);color:#fff;font-size:13px;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4);';
+    genTimerEl.textContent = 'Generating\u2026 0.0s';
+    document.body.appendChild(genTimerEl);
+    genTimerInterval = setInterval(() => {
+        if (!genTimerEl) return;
+        const elapsed = ((performance.now() - genTimerStart) / 1000).toFixed(1);
+        genTimerEl.textContent = `Generating\u2026 ${elapsed}s`;
+    }, 200);
+}
+
+function stopGenTimer() {
+    if (genTimerInterval) {
+        clearInterval(genTimerInterval);
+        genTimerInterval = null;
+    }
+    if (genTimerEl && genTimerEl.parentNode) {
+        genTimerEl.parentNode.removeChild(genTimerEl);
+    }
+    genTimerEl = null;
 }
 
 /* ------------------------------------------------------------------ *
