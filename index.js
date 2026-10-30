@@ -1609,7 +1609,7 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
                 toastrSafe('warning', 'Chat changed, the generated image was not posted.');
                 return savedPath;
             }
-            await postImageToChat({ imageUrl: savedPath, prompt: params.prompt, negative: params.negativeprompt, width: params.width, height: params.height });
+            await postImageToChat({ imageUrl: savedPath, prompt: params.prompt, negative: params.negativeprompt, width: params.width, height: params.height, seconds });
         }
 
         toastrSafe('success', `Image generated in ${seconds}s.`);
@@ -1692,7 +1692,7 @@ async function downloadImage(imagePath) {
 }
 
 /** Posts the generated image into the chat as a hidden-from-LLM system message. */
-async function postImageToChat({ imageUrl, prompt, negative, width, height }) {
+async function postImageToChat({ imageUrl, prompt, negative, width, height, seconds }) {
     const context = ctx();
     const name = context.groupId ? SYSTEM_USER_NAME : (context.name2 ?? SYSTEM_USER_NAME);
 
@@ -1713,7 +1713,7 @@ async function postImageToChat({ imageUrl, prompt, negative, width, height }) {
         // System messages never reach the language model prompt.
         is_system: true,
         send_date: new Date().toISOString(),
-        mes: prompt,
+        mes: seconds ? `${prompt}\nGenerated in ${seconds}s.` : prompt,
         extra: {
             media: [mediaAttachment],
             media_display: MEDIA_DISPLAY_GALLERY,
