@@ -1491,6 +1491,73 @@ async function generateFromButton(options = {}) {
  * @param {{sceneText?: string, forceLlm?: boolean, quiet?: boolean, overrides?: object, targetAvatar?: string|null, source?: string}} options
  * @returns {Promise<string>} The saved image path (empty on failure).
  */
+function toWsUrl(httpUrl) {
+    const base = String(httpUrl || '').replace(/\/+$/, '');
+    if (base.startsWith('https://')) return base.replace(/^https:\/\//, 'wss://');
+    if (base.startsWith('http://')) return base.replace(/^http:\/\//, 'ws://');
+    return base;
+}
+
+async function generateViaWebSocket(params, onProgress) {
+    const settings = getSettings();
+    if (!sessionId) await openSession();
+    const base = toWsUrl(settings.base_url || 'http://127.0.0.1:7801');
+    const url = base + '/API/GenerateText2ImageWS';
+    const wanted = Math.max(1, Number(params.images) || 1);
+
+    return new Promise((resolve, reject) => {
+        let socket;
+        try { socket = new WebSocket(url); }
+        catch (e) { reject(e); return; }
+        const images = [];
+        let settled = false;
+        let timer = null;
+
+        const finish = (err) => {
+            if (settled) return;
+            settled = true;
+            if (timer) { clearTimeout(timer); timer = null; }
+            try { socket.close(); } catch (e) {}
+            if (err) reject(err); else resolve({ images });
+        };
+
+        // Safety timeout
+        timer = setTimeout(() => finish(new Error('WebSocket generation timed out.')), 10 * 60 * 1000);
+
+        socket.onopen = () => {
+            socket.send(JSON.stringify({ session_id: sessionId, ...params }));
+        };
+        socket.onmessage = (event) => {
+            let data;
+            try { data = JSON.parse(event.data); } catch (e) { return; }
+            if (data.error) {
+                const msg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+                finish(new Error(msg)); return;
+            }
+            if (data.error_id === 'invalid_session_id') {
+                finish(new Error('invalid_session_id')); return;
+            }
+            if (data.gen_progress) {
+                const gp = data.gen_progress;
+                const overall = typeof gp.overall_percent === 'number' ? gp.overall_percent : 0;
+                if (typeof onProgress === 'function') onProgress({ overall, current: gp.current_percent || 0, preview: gp.preview });
+                return;
+            }
+            if (data.image) {
+                const img = typeof data.image === 'string' ? data.image : (data.image.image || '');
+                if (img) images.push(img);
+                if (images.length >= wanted) finish(null);
+                return;
+            }
+            if (data.socket_intention === 'close' || data.discard_indices) {
+                finish(null); return;
+            }
+        };
+        socket.onerror = () => finish(new Error('WebSocket connection failed.'));
+        socket.onclose = () => { if (!settled) { if (images.length > 0) finish(null); else finish(new Error('WebSocket closed before completion.')); } };
+    });
+}
+
 async function generateImage({ sceneText = '', forceLlm = false, quiet = false, overrides = {}, targetAvatar = null, source = '' } = {}) {
     if (busy) {
         toastrSafe('warning', 'An image is already being generated.');
@@ -1581,9 +1648,23 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
 
         // 5. Generate
         const started = performance.now();
-        const result = await apiCall('/API/GenerateText2Image', params, {
-            timeout: GENERATION_TIMEOUT_MS,
-        });
+        let result;
+        try {
+            result = await generateViaWebSocket(params, (gp) => {
+                const pct = Math.round(((gp.overall || 0) * 100);
+                try { document.title = `Generating… ${pct}%`; } catch (e) {}
+                try {
+                    const toastMsg = document.querySelector('.toast.toast-info .toast-message');
+                    if (toastMsg) toastMsg.textContent = 'Generating… ' + pct + '%';
+                } catch (e) {}
+            });
+        } catch (wsError) {
+            console.error('[swarm] WebSocket generation failed, falling back to HTTP:', wsError);
+            try { toastr.warning('WebSocket failed, using HTTP. Check console for details.', 'Swarm Image Gen'); } catch (e) {}
+            result = await apiCall('/API/GenerateText2Image', params, {
+                timeout: GENERATION_TIMEOUT_MS,
+            });
+        }
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
 
         const imagePath = Array.isArray(result?.images) && result.images.length > 0 ? String(result.images[0]) : '';
