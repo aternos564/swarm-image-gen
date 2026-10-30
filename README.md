@@ -16,6 +16,10 @@ extension, with the two things that one lacks:
 * **one obvious image button** — an entry in SillyTavern's own wand menu (the one with *Attach a File*), plus a
   wand button under every message. SillyTavern's built-in image button keeps working next to them; a checkbox in
   the panel hides it if you would rather see only SwarmUI's button.
+* **live progress** — while SwarmUI is sampling, the *Generating image…* toast and the browser tab title show the
+  real percentage, the current sampler step (`step 12/25`), the image number when generating several, and the
+  elapsed time. The numbers come from SwarmUI's WebSocket API; if the browser cannot open the socket, the
+  extension falls back to the HTTP API automatically and keeps the elapsed-time display.
 
 It also supports the same **"Send me a picture of:"** list as SillyTavern's built-in image extension
 (Yourself, Your Face, Me, The Whole Story, The Last Message, Raw Last Message, Background — also available as
@@ -60,6 +64,19 @@ Copy the whole `swarm-image-gen` folder into your **user extensions** directory:
 
 e.g. `SillyTavern/data/default-user/extensions/swarm-image-gen`, so that the folder contains
 `manifest.json`, `index.js`, `style.css`, `settings.html`. Reload SillyTavern (F5) afterwards.
+
+### Clean reinstall (if the extension does not appear)
+
+If the extension worked before but is now missing from the *Extensions* drawer — or a new version does not show
+up after **Update all** — remove the old copy first, then install again:
+
+1. *Extensions → Manage extensions* → **Uninstall** next to *Swarm Image Gen* (or delete the extension folder,
+   e.g. `SillyTavern/data/default-user/extensions/swarm-image-gen`).
+2. Reload SillyTavern (F5) so the stale script is no longer registered.
+3. Install it again with the repository URL above, then hard-reload the page (**Ctrl+F5** / **Cmd+Shift+R**).
+
+A half-updated folder or a cached `index.js` from an older release can leave the extension invisible; the clean
+reinstall replaces the script while your saved settings stay in SillyTavern's settings file.
 
 ### Android / Termux
 
@@ -176,6 +193,23 @@ or start SillyTavern with `--corsProxy`. Then the proxy transport works. Nothing
 the route only forwards the request and strips the `Origin` header, so SwarmUI's CORS check never applies.
 This must be enabled again after a config reset, and it is off by default.
 
+### Live progress uses a direct WebSocket
+
+The percentage and step counter are streamed over `ws://`/`wss://` straight to SwarmUI's
+`/API/GenerateText2ImageWS` route. SillyTavern's `/proxy/` only forwards HTTP requests, so it cannot carry this
+traffic. That has a few consequences:
+
+* The **Request transport** setting applies to Connect, model lists and image downloads. Live progress
+  additionally needs the browser to reach SwarmUI's WebSocket route directly, which is why fix 1 (allow the
+  SillyTavern origin in SwarmUI) is the recommended setup.
+* If SillyTavern is served over **HTTPS** and SwarmUI is `http://`, browsers block `ws://` as mixed content.
+  The extension detects this, skips the socket and uses the HTTP API, so images still generate — only the
+  live percentage and step counter are missing.
+* A reverse proxy in front of SwarmUI must forward the `Upgrade`/`Connection` headers for the WebSocket route.
+* If the socket fails for any other reason (old SwarmUI, proxy without upgrade support), the extension falls
+  back to the HTTP API automatically. The fallback is only used when SwarmUI has not started working on the
+  request yet, so an image is never generated twice.
+
 ---
 
 ## Troubleshooting
@@ -197,6 +231,8 @@ This must be enabled again after a config reset, and it is off by default.
 | The *Edit prompts before generation* popup is empty | No chat prompt could be built (empty chat or empty message). Type what you want into the box — the appearance, outfit, prefix/suffix and LoRA tags and the negative prompt are added to whatever is in there when you press Continue. |
 | *New prompt* keeps sending the same prompt as the last image | Look at what the popup promised: **without** *Let the chat LLM write the scene prompt*, *New prompt* just reads the last chat message again, so it stays identical until you send a new chat message — switch the LLM option on to have fresh prompts written. **With** the LLM option on, the model is told to change the angle/pose/framing instead of repeating itself; if it returns the same text anyway you get the toast *"The chat model returned the same prompt as the last image."* — the chat has not changed since the last picture, so send a new message, edit the prompt in the *Edit prompts before generation* popup, or accept it (the new image will at least be a new seed). *Old prompt, new image* sends the same prompt on purpose; only the picture is re-rolled. |
 | Two generations at once | Not possible by design; the second one is refused with a toast. |
+| The toast only shows *Generating image… 12.3s*, never a percentage or step | The WebSocket could not be opened, so the extension is using the HTTP API (the image still generates). Open the console and look for `[swarm] WebSocket generation failed`. The usual causes are an HTTPS SillyTavern page talking to `http://` SwarmUI (mixed content), a reverse proxy that does not forward WebSocket upgrades, or an unreachable `ws://` address. Fix the WebSocket route or accept HTTP mode — progress falls back to elapsed time only. |
+| The extension is missing from the *Extensions* drawer after an update | Remove the old copy and install it again — see **Clean reinstall** under *Install*. A stale or partially updated `index.js` stops the whole extension from loading, so the panel and wand entry disappear even though the rest of SillyTavern works. |
 
 Console logging: everything is prefixed with `[swarm]`, including the exact request that was sent
 (`model / sampler / width / height / steps / cfg / seed / prompt / negative`).
