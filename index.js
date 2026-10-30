@@ -1751,14 +1751,14 @@ function startGenTimer() {
     genTimerStart = performance.now();
     genTimerEl = document.createElement('div');
     genTimerEl.id = 'swarm_gen_timer';
-    genTimerEl.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:99999;padding:8px 12px;border-radius:8px;background:rgba(0,0,0,.75);color:#fff;font-size:13px;font-family:sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4);';
+    genTimerEl.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2147483647;padding:16px 24px;border-radius:12px;background:rgba(0,0,0,.88);color:#fff;font-size:20px;font-weight:700;font-family:sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.7);pointer-events:none;';
     genTimerEl.textContent = 'Generating\u2026 0.0s';
     document.body.appendChild(genTimerEl);
     genTimerInterval = setInterval(() => {
         if (!genTimerEl) return;
         const elapsed = ((performance.now() - genTimerStart) / 1000).toFixed(1);
-        genTimerEl.textContent = `Generating\u2026 ${elapsed}s`;
-    }, 200);
+        genTimerEl.textContent = 'Generating\u2026 ' + elapsed + 's';
+    }, 100);
 }
 
 function stopGenTimer() {
