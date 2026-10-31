@@ -170,6 +170,10 @@ const defaultSettings = {
     function_tool: false,
     llm_prompt: false,
     llm_instruction: DEFAULT_LLM_INSTRUCTION,
+    /** Add the character card's description/scenario to LLM-written scene prompts. */
+    use_character_reference: true,
+    /** Text last typed in the panel's Custom prompt box. */
+    custom_prompt: '',
     /** Cached dropdown contents so the UI is not empty after a reload. */
     resources: {
         models: [],
@@ -654,6 +658,49 @@ function buildTransportErrorMessage(errors) {
     return `${parts.join(' ')}\n${details}`;
 }
 
+/** @returns {string} The exact origin SwarmUI must allow, e.g. http://127.0.0.1:8000 */
+function connectionOrigin() {
+    try {
+        return String(globalThis.window?.location?.origin ?? '');
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Shows the connection help block with the exact CORS value and setup steps. The panel is
+ * deliberately hidden after a successful Connect so it does not take space in normal use.
+ * @param {any} [error] The error that made Connect fail
+ * @returns {void}
+ */
+function showConnectionHelp(error) {
+    const origin = connectionOrigin();
+    $('#swarm_origin_value').text(origin || '(unknown)');
+    $('#swarm_cors_value').text(origin || '(unknown)');
+    $('#swarm_copy_origin').attr('data-origin', origin);
+
+    const settings = getSettings();
+    const base = normalizeBaseUrl(settings.base_url);
+    const warnings = [];
+    if (globalThis.window?.location?.protocol === 'https:' && /^http:\/\//i.test(base)) {
+        warnings.push('This page is HTTPS but SwarmUI uses http://. Browsers block direct HTTP requests from an HTTPS page; enable SillyTavern\'s proxy or use an HTTPS SwarmUI URL.');
+    }
+    if (/^https?:\/\/(127\.0\.0\.1|localhost)(?=[:/]|$)/i.test(base)
+        && !/^(127\.0\.0\.1|localhost)$/i.test(String(globalThis.window?.location?.hostname ?? ''))) {
+        warnings.push('SwarmUI is set to 127.0.0.1/localhost. From another device such as a phone, that points to the device itself — use the PC\'s LAN IP instead.');
+    }
+    if (error?.code === 'PROXY_DISABLED' || /CORS proxy is disabled/i.test(String(error?.message ?? ''))) {
+        warnings.push('SillyTavern\'s proxy is disabled. Set enableCorsProxy: true in config.yaml or start SillyTavern with --corsProxy.');
+    }
+    $('#swarm_connection_warning').text(warnings.join(' ')).toggle(warnings.length > 0);
+    $('#swarm_connection_help').show();
+}
+
+/** Hides the connection help block after a successful Connect. */
+function hideConnectionHelp() {
+    $('#swarm_connection_help').hide();
+}
+
 /** Opens a new SwarmUI session (and remembers which transport worked). */
 async function openSession(transportOverride = null) {
     const payload = {};
@@ -755,6 +802,7 @@ async function connect({ silent = false } = {}) {
         const transportLabel = resolvedTransport === 'proxy' ? 'via SillyTavern proxy' : 'direct';
         const summary = `${settings.resources.models.length} checkpoint(s), ${settings.resources.loras.length} LoRA(s), ${settings.resources.samplers.length} sampler(s) — ${transportLabel}`;
         status.addClass('swarm-ok').text(`Connected. ${summary}`);
+        hideConnectionHelp();
         log('Connect finished.', summary);
         if (!silent) {
             toastrSafe('success', `Connected to SwarmUI (${transportLabel}).`);
@@ -763,6 +811,7 @@ async function connect({ silent = false } = {}) {
     } catch (error) {
         logError('Connect failed.', error);
         status.addClass('swarm-error').text(String(error?.message ?? error).split('\n')[0]);
+        showConnectionHelp(error);
         if (!silent) {
             toastrSafe('error', String(error?.message ?? error).split('\n')[0]);
         }
@@ -851,6 +900,8 @@ function renderAllControls() {
     $('#swarm_negative_prompt').val(settings.negative_prompt);
     $('#swarm_llm_prompt').prop('checked', !!settings.llm_prompt);
     $('#swarm_llm_instruction').val(settings.llm_instruction);
+    $('#swarm_use_character_reference').prop('checked', settings.use_character_reference !== false);
+    $('#swarm_custom_prompt').val(settings.custom_prompt ?? '');
     $('#swarm_lora_weight').val(settings.lora_weight);
     $('#swarm_tag_weight').val(settings.tag_weight ?? DEFAULT_TAG_WEIGHT);
 
@@ -1280,6 +1331,45 @@ function rawLastMessagePrompt() {
 }
 
 /**
+ * Builds a compact visual reference from the character card. It is appended to LLM
+ * instructions so faces, hair, body and the setting stay consistent; clothing is still
+ * controlled by the outfit boxes.
+ * @param {string} [source] Key of PICTURE_SOURCES, 'custom', or '' for the default flow
+ * @returns {string}
+ */
+function characterReferenceForSource(source = '') {
+    const settings = getSettings();
+    if (settings.use_character_reference === false) {
+        return '';
+    }
+    if (source === 'background' || source === 'me' || source === 'raw_last') {
+        return '';
+    }
+    const character = (source === 'you' || source === 'face' || source === 'custom')
+        ? resolveCharacter().character
+        : characterOfLastMessage();
+    if (!character) {
+        return '';
+    }
+    const description = stripFormatting(character.description ?? character.data?.description ?? '');
+    const scenario = stripFormatting(character.scenario ?? character.data?.scenario ?? '');
+    const parts = [];
+    if (description) {
+        parts.push(`Description: ${description.slice(0, 900)}`);
+    }
+    if (scenario) {
+        parts.push(`Scenario: ${scenario.slice(0, 400)}`);
+    }
+    if (!parts.length) {
+        return '';
+    }
+    return [
+        'Character reference for visual consistency. Use it only for the character\'s face, hair, body, age and the setting. Do not copy clothing, personality, dialogue or backstory; the outfit is provided separately.',
+        ...parts,
+    ].join('\n');
+}
+
+/**
  * Builds the scene part of the prompt for a "Send me a picture of:" source.
  * @param {string} source Key of PICTURE_SOURCES, or '' for the plain generation flow
  * @param {boolean} [forceLlm] Write the scene with the chat model even if the panel says otherwise
@@ -1291,9 +1381,11 @@ async function sourceScenePrompt(source, forceLlm = false) {
         return rawLastMessagePrompt();
     }
     if (source && SOURCE_INSTRUCTIONS[source]) {
-        return await writeScenePrompt(substituteSafe(SOURCE_INSTRUCTIONS[source]));
+        return await writeScenePrompt(substituteSafe(SOURCE_INSTRUCTIONS[source]), characterReferenceForSource(source));
     }
-    return (forceLlm || settings.llm_prompt) ? await writeScenePrompt() : lastMessagePrompt();
+    return (forceLlm || settings.llm_prompt)
+        ? await writeScenePrompt('', characterReferenceForSource(source))
+        : lastMessagePrompt();
 }
 
 /** @returns {{avatar: string|null}} Character that authored the last usable message. */
@@ -1315,14 +1407,18 @@ function lastMessageCharacter() {
  * the same chat often repeats its own last answer word for word, which makes "New prompt" look
  * like it did nothing.
  * @param {string} [instruction] Overrides the instruction configured in the panel
+ * @param {string} [reference] Optional character-card reference appended to the instruction
  * @returns {Promise<string>}
  */
-async function writeScenePrompt(instruction = '') {
+async function writeScenePrompt(instruction = '', reference = '') {
     const settings = getSettings();
     let quietPrompt = String(instruction || settings.llm_instruction || DEFAULT_LLM_INSTRUCTION);
     const previous = String(settings.last_prompt ?? '').trim();
     if (previous) {
         quietPrompt += `\n\nThe previous image was already made with this prompt: "${previous.slice(0, 700)}". Write a new prompt for the current chat: keep the characters and their outfits, change the camera angle, the pose or the framing where it fits, and do not copy the old prompt word for word.`;
+    }
+    if (reference) {
+        quietPrompt += `\n\n${reference}`;
     }
     log('Asking the chat model for a prompt…', previous ? '(told not to repeat the last one)' : '');
     const result = await ctx().generateQuietPrompt({
@@ -1409,10 +1505,10 @@ function scenePromptUsesLlm(source = '', forceLlm = false) {
 
 /**
  * Asks what the pressed image button should do: write a new prompt (the chat model may be
- * asked again, which costs tokens) or reuse the chat prompt of the last image. Only called
- * when the setting is on and a previous prompt exists.
+ * asked again, which costs tokens), reuse the chat prompt of the last image, or enter a
+ * custom prompt. Only called when the setting is on and a previous prompt exists.
  * @param {boolean} [usesLlm] Whether "New prompt" asks the chat model (see scenePromptUsesLlm)
- * @returns {Promise<'new'|'reuse'|'cancel'>}
+ * @returns {Promise<'new'|'reuse'|'custom'|'cancel'>}
  */
 async function askPromptChoice(usesLlm = false) {
     const popupShow = ctx().Popup?.show;
@@ -1430,7 +1526,7 @@ async function askPromptChoice(usesLlm = false) {
         [
             '<div>The chat prompt of the last image was:</div>',
             `<div><i>${escapeForPopup(preview)}</i></div>`,
-            `<div><small><b>New prompt</b> ${newPromptNote}. <b>Old prompt, new image</b> reuses that prompt and only makes a new picture (no chat model call, no tokens).</small></div>`,
+            `<div><small><b>New prompt</b> ${newPromptNote}. <b>Old prompt, new image</b> reuses that prompt and only makes a new picture (no chat model call, no tokens). <b>Custom prompt</b> lets you paste or write your own.</small></div>`,
         ].join(''),
         {
             customButtons: [
@@ -1446,6 +1542,13 @@ async function askPromptChoice(usesLlm = false) {
                     result: 2,
                     tooltip: 'Reuse the chat prompt of the last image. Costs no tokens.',
                 },
+                {
+                    text: 'Custom prompt',
+                    result: 3,
+                    icon: 'fa-pen-to-square',
+                    classes: ['swarm-popup-custom'],
+                    tooltip: 'Write or paste your own prompt for this image. Appearance/outfit tags, prefix/suffix tags, LoRAs and the negative prompt are still added.',
+                },
             ],
             okButton: false,
             cancelButton: 'Cancel',
@@ -1458,15 +1561,18 @@ async function askPromptChoice(usesLlm = false) {
     if (result === 1) {
         return 'new';
     }
+    if (result === 3) {
+        return 'custom';
+    }
     return 'cancel';
 }
 
 /**
  * Entry point for the buttons that generate from the chat (wand menu entry, message button,
- * "Generate now"). Offers "New prompt" or "Old prompt, new image" first when that is switched
- * on and a previous prompt exists, so a new image can be made without asking the chat model.
- * "New prompt" keeps writing with the chat model when the panel says so; the model is then
- * told to vary the last prompt instead of repeating it.
+ * "Generate now"). Offers "New prompt", "Old prompt, new image" or "Custom prompt" first when
+ * that is switched on and a previous prompt exists, so a new image can be made without asking
+ * the chat model. "New prompt" keeps writing with the chat model when the panel says so; the
+ * model is then told to vary the last prompt instead of repeating it.
  * @param {{sceneText?: string, forceLlm?: boolean, quiet?: boolean, overrides?: object, targetAvatar?: string|null, source?: string}} options
  * @returns {Promise<string>} The saved image path (empty on failure or cancel).
  */
@@ -1482,12 +1588,169 @@ async function generateFromButton(options = {}) {
                 source: String(settings.last_source ?? ''),
             });
         }
+        if (choice === 'custom') {
+            const prompt = await promptForCustomPrompt(settings.custom_prompt ?? '');
+            if (prompt === null) {
+                toastrSafe('info', 'Image generation cancelled.');
+                return '';
+            }
+            if (!prompt) {
+                toastrSafe('warning', 'Write or paste a prompt first.');
+                return '';
+            }
+            return await generateFromCustomPromptText(prompt, options);
+        }
         if (choice !== 'new') {
             toastrSafe('info', 'Image generation cancelled.');
             return '';
         }
     }
     return await generateImage(options);
+}
+
+/**
+ * Opens SillyTavern's text input popup for a custom prompt.
+ * @param {string} [defaultText] Text to prefill
+ * @returns {Promise<string|null>} The trimmed prompt, or null when the popup was cancelled
+ */
+async function promptForCustomPrompt(defaultText = '') {
+    const popupShow = ctx().Popup?.show;
+    if (typeof popupShow?.input !== 'function') {
+        toastrSafe('warning', 'This SillyTavern version has no prompt popup. Use the Custom prompt box in the extension panel.');
+        return null;
+    }
+
+    const text = await popupShow.input(
+        'Custom image prompt',
+        'Paste or write the prompt. Your appearance/outfit tags, prefix/suffix tags, LoRAs and negative prompt are added automatically.',
+        String(defaultText ?? ''),
+        {
+            rows: 7,
+            okButton: 'Generate',
+            cancelButton: 'Cancel',
+        },
+    );
+
+    if (text === null || text === undefined) {
+        return null;
+    }
+    return String(text).trim();
+}
+
+/**
+ * Generates from an explicit custom prompt. The text is the scene; appearance/outfit tags,
+ * prefix/suffix tags, LoRAs and the negative prompt are added by the normal generation flow.
+ * The New prompt / Old prompt chooser is deliberately bypassed: the user already chose the
+ * prompt by typing it.
+ * @param {string} prompt
+ * @param {{quiet?: boolean, overrides?: object, targetAvatar?: string|null}} [options]
+ * @returns {Promise<string>} The saved image path (empty on failure or cancel)
+ */
+async function generateFromCustomPromptText(prompt, options = {}) {
+    const settings = getSettings();
+    settings.custom_prompt = prompt;
+    saveSettings();
+    $('#swarm_custom_prompt').val(prompt);
+    return await generateImage({
+        ...options,
+        sceneText: prompt,
+        targetAvatar: options.targetAvatar ?? resolveCharacter().avatar,
+        source: 'custom',
+    });
+}
+
+/**
+ * Generates from the text currently in the panel's Custom prompt box.
+ * @returns {Promise<string>} The saved image path (empty on failure or cancel)
+ */
+async function generateFromCustomPromptBox() {
+    const prompt = String($('#swarm_custom_prompt').val() ?? '').trim();
+    if (!prompt) {
+        toastrSafe('warning', 'Write or paste a prompt first.');
+        return '';
+    }
+    return await generateFromCustomPromptText(prompt);
+}
+
+/**
+ * Opens SillyTavern's text input popup for a custom prompt, then generates from it. Used by
+ * the "Custom Prompt (SwarmUI)" entry in the wand menu.
+ * @returns {Promise<string>} The saved image path (empty on cancel/failure)
+ */
+async function openCustomPromptPopup() {
+    const settings = getSettings();
+    const prompt = await promptForCustomPrompt(settings.custom_prompt ?? '');
+    if (prompt === null) {
+        return '';
+    }
+    if (!prompt) {
+        toastrSafe('warning', 'Write or paste a prompt first.');
+        return '';
+    }
+    return await generateFromCustomPromptText(prompt);
+}
+
+/** Guards against starting two Enhance requests at once. */
+let enhancingCustomPrompt = false;
+
+/**
+ * Asks the chat model to rewrite the Custom prompt box into compact image tags. This is
+ * intentionally separate from the image prompt instruction: the user's text is kept as the
+ * subject, and only its wording is converted into tags.
+ * @returns {Promise<void>}
+ */
+async function enhanceCustomPrompt() {
+    if (enhancingCustomPrompt) {
+        return;
+    }
+    if (busy) {
+        toastrSafe('warning', 'Wait for the current image to finish first.');
+        return;
+    }
+    const settings = getSettings();
+    const text = String($('#swarm_custom_prompt').val() ?? '').trim();
+    if (!text) {
+        toastrSafe('warning', 'Write or paste a prompt first.');
+        return;
+    }
+
+    enhancingCustomPrompt = true;
+    const $button = $('#swarm_custom_enhance').addClass('swarm-busy');
+    try {
+        const instruction = [
+            'You rewrite image prompts for a Stable Diffusion model.',
+            'Turn the description below into a single comma-separated list of concise, visual tags.',
+            'Keep the subject, pose, clothing, setting, time of day, lighting and mood.',
+            'Remove dialogue, thoughts, personality traits, camera instructions and anything that cannot be seen in a still image.',
+            'Do not add new subjects or clothing. Do not write sentences, quotes, explanations or markdown.',
+            'Only output the tags on one line, separated by commas.',
+            '',
+            'Description:',
+            text,
+        ].join('\n');
+
+        log('Asking the chat model to enhance the custom prompt…');
+        const result = await ctx().generateQuietPrompt({
+            quietPrompt: instruction,
+            quietToLoud: false,
+            removeReasoning: true,
+        });
+        const cleaned = stripFormatting(result);
+        if (!cleaned) {
+            toastrSafe('warning', 'The chat model returned an empty prompt.');
+            return;
+        }
+        $('#swarm_custom_prompt').val(cleaned);
+        settings.custom_prompt = cleaned;
+        saveSettings();
+        toastrSafe('success', 'Prompt enhanced.');
+    } catch (error) {
+        logError('Could not enhance the custom prompt.', error);
+        toastrSafe('error', `Could not enhance the prompt: ${error?.message ?? error}`);
+    } finally {
+        enhancingCustomPrompt = false;
+        $button.removeClass('swarm-busy');
+    }
 }
 
 /** Converts the configured HTTP(S) base URL into the SwarmUI WebSocket URL. */
@@ -1871,38 +2134,65 @@ async function generateImage({ sceneText = '', forceLlm = false, quiet = false, 
         }
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
 
-        const imagePath = Array.isArray(result?.images) && result.images.length > 0 ? String(result.images[0]) : '';
-        if (!imagePath) {
+        const imagePaths = Array.isArray(result?.images)
+            ? result.images.map((image) => String(image ?? '')).filter(Boolean)
+            : [];
+        if (!imagePaths.length) {
             throw new Error(`SwarmUI did not return an image: ${JSON.stringify(result).slice(0, 300)}`);
         }
-        log(`Generated ${imagePath} in ${seconds}s.`);
+        log(`Generated ${imagePaths.length} image(s) in ${seconds}s:`, imagePaths);
 
-        // 6. Download and store inside SillyTavern's user images folder
-        const { base64, format } = await downloadImage(imagePath);
+        // 6. Download and store every image inside SillyTavern's user images folder.
         const chatIdBefore = ctx().getCurrentChatId();
-
         const context = ctx();
         const folder = context.groupId
             ? String(context.groupId)
             : (context.characters?.[context.characterId]?.name ?? '');
-        const filename = `swarm_${folder || 'chat'}_${context.humanizedDateTime()}`;
-        const savedPath = await saveBase64AsFile(base64, folder, filename, format);
-        log(`Saved to ${savedPath}`);
+        const stamp = context.humanizedDateTime();
+        const savedPaths = [];
+        for (const [index, imagePath] of imagePaths.entries()) {
+            try {
+                const { base64, format } = await downloadImage(imagePath);
+                // Keep the old single-image filename, add a suffix only for batches.
+                const suffix = imagePaths.length > 1 ? `_${index + 1}` : '';
+                const filename = `swarm_${folder || 'chat'}_${stamp}${suffix}`;
+                const savedPath = await saveBase64AsFile(base64, folder, filename, format);
+                if (savedPath) {
+                    savedPaths.push(savedPath);
+                    log(`Saved to ${savedPath}`);
+                }
+            } catch (error) {
+                logError(`Could not save image ${index + 1} of ${imagePaths.length}.`, error);
+            }
+        }
+        if (!savedPaths.length) {
+            throw new Error('SwarmUI returned image data, but none of the images could be saved.');
+        }
+        const firstSavedPath = savedPaths[0];
 
         if (source === 'background') {
-            await applyChatBackground(savedPath);
+            await applyChatBackground(firstSavedPath);
         }
 
         if (!quiet) {
             if (ctx().getCurrentChatId() !== chatIdBefore) {
                 toastrSafe('warning', 'Chat changed, the generated image was not posted.');
-                return savedPath;
+                return firstSavedPath;
             }
-            await postImageToChat({ imageUrl: savedPath, prompt: params.prompt, negative: params.negativeprompt, width: params.width, height: params.height, seconds });
+            await postImageToChat({
+                imageUrls: savedPaths,
+                prompt: params.prompt,
+                negative: params.negativeprompt,
+                width: params.width,
+                height: params.height,
+                seconds,
+            });
         }
 
-        toastrSafe('success', `Image generated in ${seconds}s.`);
-        return savedPath;
+        toastrSafe('success', savedPaths.length === 1
+            ? `Image generated in ${seconds}s.`
+            : `${savedPaths.length} images generated in ${seconds}s.`);
+        return firstSavedPath;
     } catch (error) {
         if (error?.cancelled) {
             toastrSafe('info', String(error.message ?? 'Image generation cancelled.'));
@@ -1981,13 +2271,19 @@ async function downloadImage(imagePath) {
     return { base64, format };
 }
 
-/** Posts the generated image into the chat as a hidden-from-LLM system message. */
-async function postImageToChat({ imageUrl, prompt, negative, width, height, seconds }) {
+/** Posts one or more generated images into the chat as a hidden-from-LLM system message. */
+async function postImageToChat({ imageUrls, imageUrl, prompt, negative, width, height, seconds }) {
     const context = ctx();
     const name = context.groupId ? SYSTEM_USER_NAME : (context.name2 ?? SYSTEM_USER_NAME);
+    const urls = Array.isArray(imageUrls)
+        ? imageUrls.map((url) => String(url ?? '')).filter(Boolean)
+        : (imageUrl ? [String(imageUrl)] : []);
+    if (!urls.length) {
+        return;
+    }
 
-    const mediaAttachment = {
-        url: imageUrl,
+    const mediaAttachments = urls.map((url) => ({
+        url: url,
         type: MEDIA_TYPE_IMAGE,
         title: prompt,
         generation_type: GENERATION_TYPE_MESSAGE,
@@ -1995,7 +2291,7 @@ async function postImageToChat({ imageUrl, prompt, negative, width, height, seco
         source: MEDIA_SOURCE_GENERATED,
         width: width,
         height: height,
-    };
+    }));
 
     const message = {
         name: name,
@@ -2005,7 +2301,7 @@ async function postImageToChat({ imageUrl, prompt, negative, width, height, seco
         send_date: new Date().toISOString(),
         mes: seconds ? `${prompt}\nGenerated in ${seconds}s.` : prompt,
         extra: {
-            media: [mediaAttachment],
+            media: mediaAttachments,
             media_display: MEDIA_DISPLAY_GALLERY,
             media_index: 0,
             inline_image: false,
@@ -2163,6 +2459,12 @@ const WAND_MENU_ITEM_HTML = `<div id="swarm_menu_gen" class="list-group-item fle
     <div class="fa-solid fa-wand-magic-sparkles extensionsMenuExtensionButton" title="Generate an image from the current chat with SwarmUI" data-i18n="[title]Generate an image from the current chat with SwarmUI"></div>
     <span data-i18n="Generate Image (SwarmUI)">Generate Image (SwarmUI)</span>
     <div id="swarm_source_toggle" class="extensionsMenuExtensionButton fa-solid fa-caret-right swarm-source-toggle" title="Choose what the picture should show (Yourself, Your Face, Me, the last message, ...)" data-i18n="[title]Choose what the picture should show (Yourself, Your Face, Me, the last message, ...)"></div>
+</div>`;
+
+/** Second wand-menu entry: write or paste a prompt instead of reading the chat. */
+const CUSTOM_MENU_ITEM_HTML = `<div id="swarm_menu_custom" class="list-group-item flex-container flexGap5">
+    <div class="fa-solid fa-pen-to-square extensionsMenuExtensionButton" title="Write or paste a custom image prompt" data-i18n="[title]Write or paste a custom image prompt"></div>
+    <span data-i18n="Custom Prompt (SwarmUI)">Custom Prompt (SwarmUI)</span>
 </div>`;
 
 /**
@@ -2514,6 +2816,7 @@ function bindSettingsEvents() {
         '#swarm_prefix_tags': 'prefix_tags',
         '#swarm_suffix_tags': 'suffix_tags',
         '#swarm_negative_prompt': 'negative_prompt',
+        '#swarm_custom_prompt': 'custom_prompt',
     };
     for (const [selector, key] of Object.entries(textBindings)) {
         $(selector).on('input', () => {
@@ -2594,6 +2897,32 @@ function bindSettingsEvents() {
         await generateFromButton({});
     });
 
+    $('#swarm_custom_generate').on('click', async () => {
+        await generateFromCustomPromptBox();
+    });
+
+    $('#swarm_custom_enhance').on('click', async () => {
+        await enhanceCustomPrompt();
+    });
+
+    $('#swarm_copy_origin').on('click', async () => {
+        const origin = String($('#swarm_copy_origin').attr('data-origin') ?? '');
+        if (!origin) {
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(origin);
+            toastrSafe('success', 'Origin copied.');
+        } catch {
+            // Older browsers / non-secure contexts have no clipboard API.
+            const $temp = $('<textarea>').val(origin).css({ position: 'fixed', top: '-1000px' }).appendTo('body');
+            $temp[0]?.select();
+            try { document.execCommand('copy'); } catch { /* not fatal */ }
+            $temp.remove();
+            toastrSafe('success', 'Origin copied.');
+        }
+    });
+
     $('#swarm_hide_builtin').prop('checked', settings.hide_builtin_buttons === true);
     $('#swarm_hide_builtin').on('change', () => {
         settings.hide_builtin_buttons = !!$('#swarm_hide_builtin').prop('checked');
@@ -2607,6 +2936,7 @@ function bindSettingsEvents() {
         '#swarm_ask_prompt_choice': 'ask_prompt_choice',
         '#swarm_interactive_mode': 'interactive_mode',
         '#swarm_function_tool': 'function_tool',
+        '#swarm_use_character_reference': 'use_character_reference',
     };
     for (const [selector, key] of Object.entries(checkboxBindings)) {
         $(selector).prop('checked', settings[key] === true);
@@ -2618,6 +2948,13 @@ function bindSettingsEvents() {
     }
 
     $(document).on('click', '#swarm_menu_gen', () => generateFromButton({}));
+
+    $(document).on('click', '#swarm_menu_custom', () => {
+        openCustomPromptPopup().catch((error) => {
+            logError('Could not open the custom prompt popup.', error);
+            toastrSafe('error', String(error?.message ?? error));
+        });
+    });
 
     $(document).on('click', `.mes_button.${MESSAGE_BUTTON_CLASS}`, (event) => {
         if (busy) {
@@ -2766,9 +3103,9 @@ function installWandMenuEntry() {
     // "Attach a File") instead of at the bottom of the menu.
     const $builtinSlot = $('#sd_wand_container');
     if ($builtinSlot.length) {
-        $builtinSlot.after(WAND_MENU_ITEM_HTML);
+        $builtinSlot.after(WAND_MENU_ITEM_HTML + CUSTOM_MENU_ITEM_HTML);
     } else {
-        $menu.append(WAND_MENU_ITEM_HTML);
+        $menu.append(WAND_MENU_ITEM_HTML + CUSTOM_MENU_ITEM_HTML);
     }
 }
 

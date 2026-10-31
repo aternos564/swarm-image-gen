@@ -6,7 +6,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "aternos564",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "auto_update": true,
     "homePage": "https://github.com/aternos564/swarm-image-gen",
     "minimum_client_version": "1.12.0",

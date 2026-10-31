@@ -35,6 +35,55 @@
                 <div id="swarm_transport_hint" class="swarm-hint">
                     <span data-i18n="If direct fails with a network error, SwarmUI is blocking the browser origin (CORS). Enable the proxy in config.yaml (enableCorsProxy: true) or set AccessControlAllowOrigin in SwarmUI. See the README.">If direct fails with a network error, SwarmUI is blocking the browser origin (CORS). Enable the proxy in config.yaml (enableCorsProxy: true) or set AccessControlAllowOrigin in SwarmUI. See the README.</span>
                 </div>
+
+                <div id="swarm_connection_help" class="swarm-connection-help" style="display: none;">
+                    <div class="swarm-help-title">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <span data-i18n="Connection help">Connection help</span>
+                    </div>
+                    <div class="swarm-help-row">
+                        <span data-i18n="Your SillyTavern origin:">Your SillyTavern origin:</span>
+                        <code id="swarm_origin_value">—</code>
+                        <div id="swarm_copy_origin" class="menu_button swarm-nowrap" title="Copy this origin">
+                            <i class="fa-solid fa-copy"></i>
+                            <span data-i18n="Copy">Copy</span>
+                        </div>
+                    </div>
+                    <div class="swarm-help-row">
+                        <span data-i18n="SwarmUI setting:">SwarmUI setting:</span>
+                        <code>AccessControlAllowOrigin: <span id="swarm_cors_value">—</span></code>
+                    </div>
+                    <div id="swarm_connection_warning" class="swarm-help-warning" style="display: none;"></div>
+                    <ol class="swarm-help-steps">
+                        <li data-i18n="Open SwarmUI → Server → Settings → Access Control Allow Origin.">Open SwarmUI → Server → Settings → Access Control Allow Origin.</li>
+                        <li data-i18n="Paste the origin above and save. SwarmUI applies it immediately.">Paste the origin above and save. SwarmUI applies it immediately.</li>
+                        <li data-i18n="Or enable SillyTavern's proxy in config.yaml: enableCorsProxy: true.">Or enable SillyTavern's proxy in config.yaml: <code>enableCorsProxy: true</code>.</li>
+                        <li data-i18n="On a phone, use the PC's LAN IP for SwarmUI (not 127.0.0.1) and keep both devices on the same Wi-Fi.">On a phone, use the PC's LAN IP for SwarmUI (not 127.0.0.1) and keep both devices on the same Wi-Fi.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- ========================= Custom prompt ========================== -->
+            <div class="swarm-section">
+                <div class="swarm-section-title" data-i18n="Custom prompt">Custom prompt</div>
+
+                <textarea id="swarm_custom_prompt" class="text_pole autoSetHeight" rows="3"
+                          placeholder="Paste or write your own image prompt…"></textarea>
+
+                <div class="swarm-row">
+                    <div id="swarm_custom_generate" class="menu_button swarm-grow" title="Generate an image with this prompt">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span data-i18n="Generate custom prompt">Generate</span>
+                    </div>
+                    <div id="swarm_custom_enhance" class="menu_button swarm-nowrap" title="Ask the chat model to rewrite this as image tags (uses tokens)">
+                        <i class="fa-solid fa-lightbulb"></i>
+                        <span data-i18n="Enhance">Enhance</span>
+                    </div>
+                </div>
+
+                <div class="swarm-hint">
+                    <span data-i18n="Your appearance/outfit tags, prefix/suffix tags, LoRAs and negative prompt are added automatically. Enhance asks the chat model to turn your text into image tags.">Your appearance/outfit tags, prefix/suffix tags, LoRAs and negative prompt are added automatically. Enhance asks the chat model to turn your text into image tags.</span>
+                </div>
             </div>
 
             <!-- ============================== Model =============================== -->
@@ -189,6 +238,16 @@
 
                 <div class="swarm-hint">
                     <span data-i18n="If this instruction asks for clothing (wearing, outfit, dress…), the scene will describe clothes of its own and fight the outfit boxes. Telling the model to skip clothing keeps the outfit stable.">If this instruction asks for clothing (wearing, outfit, dress…), the scene will describe clothes of its own and fight the outfit boxes. Telling the model to skip clothing keeps the outfit stable.</span>
+                </div>
+
+                <label for="swarm_use_character_reference" class="checkbox_label"
+                       title="Add the character card's description and scenario to the LLM instruction, so faces, hair, body and setting stay consistent. Clothing is still controlled by the outfit boxes.">
+                    <input type="checkbox" id="swarm_use_character_reference" />
+                    <span data-i18n="Use character card details in LLM prompts">Use character card details in LLM prompts</span>
+                </label>
+
+                <div class="swarm-hint">
+                    <span data-i18n="Adds the character's description and scenario as a visual reference. The outfit boxes still control clothing.">Adds the character's description and scenario as a visual reference. The outfit boxes still control clothing.</span>
                 </div>
 
                 <div class="swarm-hint">

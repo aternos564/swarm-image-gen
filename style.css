@@ -78,6 +78,67 @@
     line-height: 1.3;
 }
 
+/* Connection help, shown only after Connect fails. */
+.swarm-settings .swarm-connection-help {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--warning, #ff8080);
+    border-radius: 6px;
+    background: var(--black30a, rgba(0, 0, 0, 0.3));
+    font-size: 0.85em;
+    line-height: 1.35;
+}
+
+.swarm-settings .swarm-help-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.swarm-settings .swarm-help-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0;
+}
+
+.swarm-settings .swarm-help-row code {
+    word-break: break-all;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--white30a, rgba(255, 255, 255, 0.12));
+}
+
+.swarm-settings .swarm-help-warning {
+    margin-top: 5px;
+    color: var(--warning, #ffb74d);
+}
+
+.swarm-settings .swarm-help-steps {
+    margin: 6px 0 0 18px;
+    padding: 0;
+}
+
+.swarm-settings .swarm-help-steps li {
+    margin: 2px 0;
+}
+
+/* Busy state for the Enhance button while the chat model is rewriting a prompt. */
+.swarm-settings .swarm-busy {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* The "New prompt / Old prompt / Custom prompt / Cancel" popup can be too wide for a
+   phone. Only this popup gets the extra class, so other SillyTavern popups are untouched. */
+.popup-controls:has(.swarm-popup-custom) {
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
 .swarm-settings .swarm-chips {
     display: flex;
     flex-wrap: wrap;
@@ -133,8 +194,9 @@ body.swarm-hide-builtin-image .sd_settings {
     display: none !important;
 }
 
-/* The wand-menu entry shares the accent colour of the in-chat button. */
-#swarm_menu_gen .extensionsMenuExtensionButton {
+/* The wand-menu entries share the accent colour of the in-chat button. */
+#swarm_menu_gen .extensionsMenuExtensionButton,
+#swarm_menu_custom .extensionsMenuExtensionButton {
     color: var(--swarm-accent, #4db8ff);
 }
 

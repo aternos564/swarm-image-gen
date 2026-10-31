@@ -20,6 +20,13 @@ extension, with the two things that one lacks:
   real percentage, the current sampler step (`step 12/25`), the image number when generating several, and the
   elapsed time. The numbers come from SwarmUI's WebSocket API; if the browser cannot open the socket, the
   extension falls back to the HTTP API automatically and keeps the elapsed-time display.
+* **all requested images** — setting *Images per request* above 1 now posts every image SwarmUI returns in one
+  gallery message, instead of only the first one.
+* **custom prompts** — paste or write your own prompt in the panel, use the *Custom Prompt (SwarmUI)* entry in
+  the wand menu, or press **Custom prompt** in the *Generate an image* dialog. **Enhance** asks the chat model to
+  rewrite your text as clean image tags (uses tokens).
+* **character-card-aware scene prompts** — the optional *Use character card details in LLM prompts* setting adds
+  the card's description and scenario as a visual reference, so faces, hair, body and setting stay consistent.
 
 It also supports the same **"Send me a picture of:"** list as SillyTavern's built-in image extension
 (Yourself, Your Face, Me, The Whole Story, The Last Message, Raw Last Message, Background — also available as
@@ -124,8 +131,14 @@ Option A works exactly the same from the phone's browser. Two things to remember
     needs a precise garment description *and* a fixed seed (see Troubleshooting).
 11. *(optional)* Tick **Let the chat LLM write the scene prompt** and edit the instruction to taste. If your
     instruction asks for clothing, the scene's clothes fight the outfit boxes — leaving clothing out of the
-    instruction keeps the outfit stable.
-12. *(optional)* Use the **caret** on the right of *Generate Image (SwarmUI)* in the wand menu (or `/swarm you`,
+    instruction keeps the outfit stable. Leave **Use character card details in LLM prompts** on (default) to add
+    the card's description and scenario as a visual reference; turn it off if your instruction already covers the
+    look or the prompt gets too long.
+12. **Custom prompt** — paste or write a prompt in the panel's *Custom prompt* box and press **Generate**, use
+    *Custom Prompt (SwarmUI)* in the wand menu, or press **Custom prompt** in the *Generate an image* dialog.
+    **Enhance** asks the chat model to rewrite your text as tags (uses tokens). Appearance/outfit tags,
+    prefix/suffix tags, LoRAs and the negative prompt are still added automatically.
+13. *(optional)* Use the **caret** on the right of *Generate Image (SwarmUI)* in the wand menu (or `/swarm you`,
     `/swarm face`, …) to generate a picture of something specific instead of the current scene. Clicking the entry
     itself keeps generating from the current chat.
 
@@ -134,7 +147,10 @@ Option A works exactly the same from the phone's browser. Two things to remember
 | Trigger | What it does |
 | --- | --- |
 | **Generate Image (SwarmUI)** in the wand menu next to the chat box | Generates from the current chat: the last message, or an LLM-written scene when that option is on. |
-| Caret `›` on the right of that entry | Opens the built-in *"Send me a picture of:"* list: **Yourself** (portrait of the character), **Your Face** (close-up portrait), **Me** (your persona), **The Whole Story** (recap, appearance and surroundings), **The Last Message** (the chat model turns the last message into tags), **Raw Last Message** (the message as written, plus the character's scenario and description with weights), **Background** (surroundings, and the picture is also set as the chat background). *Me* and *Background* never get the character's appearance/outfit tags; *Yourself*, *Your Face* and *Background* never get your outfit. |
+| **Custom Prompt (SwarmUI)** in the wand menu | Opens a popup where you can paste or write a prompt; press **Generate** to make the image. |
+| **Custom prompt** box in the panel → **Generate** | Same as the popup without opening it; the text stays saved between reloads. |
+| **Enhance** next to the custom prompt box | Asks the chat model to rewrite your text as comma-separated image tags (uses tokens). Review or edit the result before generating. |
+| Caret `›` on the right of **Generate Image (SwarmUI)** | Opens the built-in *"Send me a picture of:"* list: **Yourself** (portrait of the character), **Your Face** (close-up portrait), **Me** (your persona), **The Whole Story** (recap, appearance and surroundings), **The Last Message** (the chat model turns the last message into tags), **Raw Last Message** (the message as written, plus the character's scenario and description with weights), **Background** (surroundings, and the picture is also set as the chat background). *Me* and *Background* never get the character's appearance/outfit tags; *Yourself*, *Your Face* and *Background* never get your outfit. |
 | Blue wand button in a message's extra buttons | Generates an image for that message. With the LLM option on, the model rewrites the scene into image tags; otherwise the message text is used. |
 | `/swarm a girl on a throne` | Uses the given text as the scene prompt. |
 | `/swarm` (no text) | Always asks the chat model to write the scene prompt. |
@@ -143,13 +159,16 @@ Option A works exactly the same from the phone's browser. Two things to remember
 | `send me a picture of a cat` in chat (*Use interactive mode* on) | Generates automatically, using the detected subject as the scene. |
 | Chat model calling the `GenerateImageSwarmUI` function tool (*Use function tool* on) | Tool-capable models request the image themselves during the scene. |
 | *Edit prompts before generation* on | Every trigger above first opens a popup with **only the chat prompt** — no appearance/outfit tags, no prefix/suffix tags, no LoRA tags, no negative prompt — so it can be corrected or the generation cancelled. Everything else is added to the prompt afterwards, exactly as configured in the panel. |
-| *Ask: new prompt or old prompt* on | The wand menu entry, the message button and **Generate now** first ask **New prompt** or **Old prompt, new image**. **New prompt** writes the prompt again: with *Let the chat LLM write the scene prompt* on the model is asked (uses tokens) and told to change the angle, the pose or the framing instead of repeating the last prompt; without it the last chat message is read again, so the text changes only when the chat does — the popup says which of the two will happen. **Old prompt, new image** reuses the chat prompt of the last image and only makes a new picture without asking the model (no tokens). The question only appears once a previous prompt exists. |
+| *Ask: new prompt or old prompt* on | The wand menu entry, the message button and **Generate now** first ask **New prompt**, **Old prompt, new image** or **Custom prompt**. **New prompt** writes the prompt again: with *Let the chat LLM write the scene prompt* on the model is asked (uses tokens) and told to change the angle, the pose or the framing instead of repeating the last prompt; without it the last chat message is read again, so the text changes only when the chat does — the popup says which of the two will happen. **Old prompt, new image** reuses the chat prompt of the last image and only makes a new picture without asking the model (no tokens). **Custom prompt** opens a text box where you can paste or write your own prompt; it uses your text as the scene and still adds the appearance/outfit tags, prefix/suffix tags, LoRAs and negative prompt. The question only appears once a previous prompt exists. |
 
 Optional arguments: `/swarm quiet=true width=832 height=1216 steps=30 cfg=5 seed=1234 model=... sampler=... scheduler=... vae=... images=1`
 (`quiet=true` generates without posting to chat). The value can also be one of the source shortcuts above.
 
 Images are saved to `data/<user>/user/images/<character>/swarm_<character>_<date>.png` and posted as a
 **system message**, which SillyTavern never sends to the language model — so your context stays clean.
+With *Images per request* above 1, every image SwarmUI returns is saved and they are posted together in one
+gallery message. Custom prompts use the currently selected character's appearance/outfit tags, unless no
+character is selected.
 SwarmUI keeps its own copy in its `Output/` folder; delete those from time to time if the disk matters.
 
 ---
@@ -180,6 +199,11 @@ Restart SwarmUI. Use the exact origin you see in your browser's address bar (sch
 `http://localhost:8001` and `http://127.0.0.1:8001` are **different** origins. `*` also works but then any
 website you visit could queue generations on your server, so the exact origin is better.
 After this, transport `direct` (and `auto`) work.
+
+When **Connect** fails, the extension opens a **Connection help** panel under the status line. It shows your
+exact SillyTavern origin with a **Copy** button and the matching `AccessControlAllowOrigin` value, so you do not
+have to guess between `localhost` and `127.0.0.1`. It also warns about the two common phone mistakes: using
+`127.0.0.1` as the SwarmUI URL on a phone, and mixing an HTTPS SillyTavern page with an `http://` SwarmUI server.
 
 ### 2. Use SillyTavern's own CORS proxy
 
@@ -217,7 +241,9 @@ traffic. That has a few consequences:
 | Symptom | Cause / fix |
 | --- | --- |
 | Status: *"Could not reach SwarmUI. SillyTavern's CORS proxy is disabled…"* | Neither transport worked: SwarmUI is unreachable **or** the browser blocked it. Check that SwarmUI is running, then apply fix 1 or 2 above. |
+| Connect fails and I do not know which origin to allow | Press **Connect**; the **Connection help** panel under the status line shows your exact SillyTavern origin and the matching `AccessControlAllowOrigin` value, with a **Copy** button. Paste it into SwarmUI → Server → Settings → Access Control Allow Origin, or enable SillyTavern's proxy. |
 | Status: *"Could not reach SwarmUI. SillyTavern's proxy could not connect…"* | The URL is wrong (bad port / SwarmUI not started). Test it by opening `http://127.0.0.1:7801` in a browser tab. |
+| Only one image appears when *Images per request* is 2+ | Update to **1.2.0** or newer. Older versions generated all images but posted only the first one. |
 | Status: *"…responded 500: Internal Server Error"* | Wrong port, or SwarmUI crashed on startup. Check SwarmUI's console. |
 | Status: *"SwarmUI responded 400: Invalid session ID"* | The extension re-creates sessions automatically; if it persists, press **Connect** again. |
 | Model dropdown is empty | Press **Connect**. If the list is still empty, SwarmUI sees no models — check its `Models/Stable-Diffusion` folder and refresh SwarmUI's model list. |
